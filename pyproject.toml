@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "iadev"
+version = "0.1.0"
+description = "IA-First development workflow CLI - multi-workspace, multi-platform"
+requires-python = ">=3.11"
+dependencies = [
+    "PyGithub>=2.0",
+    "python-gitlab>=4.0",
+]
+
+[project.scripts]
+iadev = "iadev.cli:main"
+iadev-devops = "iadev.devops:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
