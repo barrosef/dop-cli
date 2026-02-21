@@ -5,8 +5,9 @@ from __future__ import annotations
 import re
 from typing import Iterable
 
-from .config import ENV_DUMP_MARKERS
 from .errors import SecurityViolationError
+
+ENV_DUMP_MARKERS = ["os.environ"]
 
 _GITHUB_TOKEN_PATTERN = re.compile(r"\bgh[pors]_[A-Za-z0-9]{10,}\b")
 _PAT_TOKEN_PATTERN = re.compile(r"\bpat_[A-Za-z0-9]{10,}\b", re.IGNORECASE)
