@@ -2,9 +2,9 @@ import argparse
 import unittest
 from unittest.mock import MagicMock, patch
 
-from iadev import cli
-from iadev.core.errors import ValidationError
-from iadev.platform.base import PRResult
+from dop import cli
+from dop.core.errors import ValidationError
+from dop.platform.base import PRResult
 
 
 def _make_args(repo=None, dry_run=False, workspace=None):
@@ -32,12 +32,12 @@ def _make_workspace(repos=None):
 
 
 class TestFinishMergeConflicts(unittest.TestCase):
-    @patch("iadev.cli.build_platform_provider")
-    @patch("iadev.cli.push_branch_simple")
-    @patch("iadev.cli.log_diff")
-    @patch("iadev.cli.has_pending_merge")
-    @patch("iadev.cli.current_branch")
-    @patch("iadev.cli.repo_path")
+    @patch("dop.cli.build_platform_provider")
+    @patch("dop.cli.push_branch_simple")
+    @patch("dop.cli.log_diff")
+    @patch("dop.cli.has_pending_merge")
+    @patch("dop.cli.current_branch")
+    @patch("dop.cli.repo_path")
     def test_push_and_create_pr(
         self, mock_repo_path, mock_current, mock_pending, mock_log_diff, mock_push, mock_platform_builder
     ):
@@ -68,9 +68,9 @@ class TestFinishMergeConflicts(unittest.TestCase):
         mock_push.assert_called_once()
         platform.create_pr.assert_called_once()
 
-    @patch("iadev.cli.has_pending_merge")
-    @patch("iadev.cli.current_branch")
-    @patch("iadev.cli.repo_path")
+    @patch("dop.cli.has_pending_merge")
+    @patch("dop.cli.current_branch")
+    @patch("dop.cli.repo_path")
     def test_error_on_pending_merge(self, mock_repo_path, mock_current, mock_pending):
         mock_repo_path.return_value = "/tmp/test/repos/repo-a"
         mock_current.return_value = "merge-conflicts-desenv-from-OG-GLOBAL"
@@ -84,10 +84,10 @@ class TestFinishMergeConflicts(unittest.TestCase):
             cli.handle_finish_merge_conflicts(_make_args(repo="repo-a"), logger, ws, auth)
         self.assertIn("Merge incompleto", str(ctx.exception))
 
-    @patch("iadev.cli.log_diff")
-    @patch("iadev.cli.has_pending_merge")
-    @patch("iadev.cli.current_branch")
-    @patch("iadev.cli.repo_path")
+    @patch("dop.cli.log_diff")
+    @patch("dop.cli.has_pending_merge")
+    @patch("dop.cli.current_branch")
+    @patch("dop.cli.repo_path")
     def test_error_on_no_commits(self, mock_repo_path, mock_current, mock_pending, mock_log_diff):
         mock_repo_path.return_value = "/tmp/test/repos/repo-a"
         mock_current.return_value = "merge-conflicts-desenv-from-OG-GLOBAL"
@@ -102,12 +102,12 @@ class TestFinishMergeConflicts(unittest.TestCase):
             cli.handle_finish_merge_conflicts(_make_args(repo="repo-a"), logger, ws, auth)
         self.assertIn("Nenhum commit", str(ctx.exception))
 
-    @patch("iadev.cli.build_platform_provider")
-    @patch("iadev.cli.push_branch_simple")
-    @patch("iadev.cli.log_diff")
-    @patch("iadev.cli.has_pending_merge")
-    @patch("iadev.cli.current_branch")
-    @patch("iadev.cli.repo_path")
+    @patch("dop.cli.build_platform_provider")
+    @patch("dop.cli.push_branch_simple")
+    @patch("dop.cli.log_diff")
+    @patch("dop.cli.has_pending_merge")
+    @patch("dop.cli.current_branch")
+    @patch("dop.cli.repo_path")
     def test_skip_existing_pr(
         self, mock_repo_path, mock_current, mock_pending, mock_log_diff, mock_push, mock_platform_builder
     ):
@@ -137,12 +137,12 @@ class TestFinishMergeConflicts(unittest.TestCase):
         self.assertEqual(result, 0)
         platform.create_pr.assert_not_called()
 
-    @patch("iadev.cli.build_platform_provider")
-    @patch("iadev.cli.push_branch_simple")
-    @patch("iadev.cli.log_diff")
-    @patch("iadev.cli.has_pending_merge")
-    @patch("iadev.cli.current_branch")
-    @patch("iadev.cli.repo_path")
+    @patch("dop.cli.build_platform_provider")
+    @patch("dop.cli.push_branch_simple")
+    @patch("dop.cli.log_diff")
+    @patch("dop.cli.has_pending_merge")
+    @patch("dop.cli.current_branch")
+    @patch("dop.cli.repo_path")
     def test_dry_run(
         self, mock_repo_path, mock_current, mock_pending, mock_log_diff, mock_push, mock_platform_builder
     ):

@@ -1,4 +1,4 @@
-"""State management for iadev CLI."""
+"""State management for dop CLI."""
 
 from __future__ import annotations
 

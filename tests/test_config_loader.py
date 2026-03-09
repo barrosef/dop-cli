@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from iadev.config.loader import load_config
+from dop.config.loader import load_config
 
 
 class TestConfigLoader(unittest.TestCase):
@@ -31,7 +31,7 @@ primary = true
 """.lstrip(),
                 encoding="utf-8",
             )
-            os.environ["IADEV_CONFIG"] = str(config_path)
+            os.environ["DOP_CONFIG"] = str(config_path)
             try:
                 cfg = load_config()
                 self.assertIn("demo", cfg)
@@ -42,7 +42,7 @@ primary = true
                 self.assertIn("app", ws.repos)
                 self.assertEqual(ws.repos["app"].base_branch, "main")
             finally:
-                os.environ.pop("IADEV_CONFIG", None)
+                os.environ.pop("DOP_CONFIG", None)
 
 
 if __name__ == "__main__":

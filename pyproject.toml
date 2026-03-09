@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "iadev"
-version = "0.1.0"
-description = "IA-First development workflow CLI - multi-workspace, multi-platform"
+name = "dop"
+version = "0.2.0"
+description = "DevOps Pipeline CLI - IA-First development workflow, multi-workspace, multi-platform"
 requires-python = ">=3.11"
 dependencies = [
     "PyGithub>=2.0",
@@ -13,8 +13,8 @@ dependencies = [
 ]
 
 [project.scripts]
-iadev = "iadev.cli:main"
-iadev-devops = "iadev.devops:main"
+dop = "dop.cli:main"
+dop-devops = "dop.devops:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from iadev.core.errors import StateError
-from iadev.core.state import (
+from dop.core.errors import StateError
+from dop.core.state import (
     advance_stage,
     append_command_log,
     load_state,

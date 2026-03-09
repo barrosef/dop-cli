@@ -6,11 +6,11 @@ from pathlib import Path
 
 from .schema import WorkspaceConfig, RepoConfig, CredentialsConfig, PlatformConfig
 
-CONFIG_DEFAULT_PATH = Path.home() / ".config" / "iadev" / "config.toml"
+CONFIG_DEFAULT_PATH = Path.home() / ".config" / "dop" / "config.toml"
 
 
 def config_path() -> Path:
-    override = os.environ.get("IADEV_CONFIG")
+    override = os.environ.get("DOP_CONFIG")
     return Path(override) if override else CONFIG_DEFAULT_PATH
 
 

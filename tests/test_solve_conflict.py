@@ -3,8 +3,8 @@ import copy
 import unittest
 from unittest.mock import MagicMock, patch
 
-from iadev import cli
-from iadev.core.errors import ValidationError
+from dop import cli
+from dop.core.errors import ValidationError
 
 
 def _make_args(jira_key="OG-123", repo=None, dry_run=False, workspace=None):
@@ -57,12 +57,12 @@ def _make_state(stage="prs_created", prs=None, repos=None):
 
 
 class TestSolveConflict(unittest.TestCase):
-    @patch("iadev.cli.save_state")
-    @patch("iadev.cli.load_state")
-    @patch("iadev.cli.rebase_on_base")
-    @patch("iadev.cli.checkout_branch")
-    @patch("iadev.cli.fetch_origin")
-    @patch("iadev.cli.repo_path")
+    @patch("dop.cli.save_state")
+    @patch("dop.cli.load_state")
+    @patch("dop.cli.rebase_on_base")
+    @patch("dop.cli.checkout_branch")
+    @patch("dop.cli.fetch_origin")
+    @patch("dop.cli.repo_path")
     def test_rebase_no_conflicts(
         self, mock_repo_path, mock_fetch, mock_checkout, mock_rebase, mock_load, mock_save
     ):
@@ -81,12 +81,12 @@ class TestSolveConflict(unittest.TestCase):
         mock_rebase.assert_called_once()
         logger.info.assert_any_call("Rebase sem conflitos em repo-a.")
 
-    @patch("iadev.cli.save_state")
-    @patch("iadev.cli.load_state")
-    @patch("iadev.cli.rebase_on_base")
-    @patch("iadev.cli.checkout_branch")
-    @patch("iadev.cli.fetch_origin")
-    @patch("iadev.cli.repo_path")
+    @patch("dop.cli.save_state")
+    @patch("dop.cli.load_state")
+    @patch("dop.cli.rebase_on_base")
+    @patch("dop.cli.checkout_branch")
+    @patch("dop.cli.fetch_origin")
+    @patch("dop.cli.repo_path")
     def test_rebase_with_conflicts(
         self, mock_repo_path, mock_fetch, mock_checkout, mock_rebase, mock_load, mock_save
     ):
@@ -106,8 +106,8 @@ class TestSolveConflict(unittest.TestCase):
         logger.warn.assert_any_call("  src/Service.java")
         logger.warn.assert_any_call("  src/Config.java")
 
-    @patch("iadev.cli.save_state")
-    @patch("iadev.cli.load_state")
+    @patch("dop.cli.save_state")
+    @patch("dop.cli.load_state")
     def test_no_conflicting_prs(self, mock_load, mock_save):
         state = _make_state(prs=[
             {
@@ -127,12 +127,12 @@ class TestSolveConflict(unittest.TestCase):
             cli.handle_solve_conflict(_make_args(), logger, ws, auth)
         self.assertIn("Nenhum PR com conflito", str(ctx.exception))
 
-    @patch("iadev.cli.save_state")
-    @patch("iadev.cli.load_state")
-    @patch("iadev.cli.rebase_on_base")
-    @patch("iadev.cli.checkout_branch")
-    @patch("iadev.cli.fetch_origin")
-    @patch("iadev.cli.repo_path")
+    @patch("dop.cli.save_state")
+    @patch("dop.cli.load_state")
+    @patch("dop.cli.rebase_on_base")
+    @patch("dop.cli.checkout_branch")
+    @patch("dop.cli.fetch_origin")
+    @patch("dop.cli.repo_path")
     def test_dry_run(
         self, mock_repo_path, mock_fetch, mock_checkout, mock_rebase, mock_load, mock_save
     ):

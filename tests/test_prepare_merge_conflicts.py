@@ -2,7 +2,7 @@ import argparse
 import unittest
 from unittest.mock import MagicMock, patch
 
-from iadev import cli
+from dop import cli
 
 
 def _make_args(repo=None, dry_run=False, workspace=None):
@@ -29,10 +29,10 @@ def _make_workspace(repos=None):
 
 
 class TestPrepareMergeConflicts(unittest.TestCase):
-    @patch("iadev.cli.merge_remote_branch")
-    @patch("iadev.cli.checkout_new_branch_from_remote")
-    @patch("iadev.cli.fetch_origin")
-    @patch("iadev.cli.repo_path")
+    @patch("dop.cli.merge_remote_branch")
+    @patch("dop.cli.checkout_new_branch_from_remote")
+    @patch("dop.cli.fetch_origin")
+    @patch("dop.cli.repo_path")
     def test_checkout_from_desenv(self, mock_repo_path, mock_fetch, mock_checkout, mock_merge):
         mock_repo_path.return_value = "/tmp/test/repos/repo-a"
         mock_merge.return_value = (True, [])
@@ -53,10 +53,10 @@ class TestPrepareMergeConflicts(unittest.TestCase):
             logger=logger,
         )
 
-    @patch("iadev.cli.merge_remote_branch")
-    @patch("iadev.cli.checkout_new_branch_from_remote")
-    @patch("iadev.cli.fetch_origin")
-    @patch("iadev.cli.repo_path")
+    @patch("dop.cli.merge_remote_branch")
+    @patch("dop.cli.checkout_new_branch_from_remote")
+    @patch("dop.cli.fetch_origin")
+    @patch("dop.cli.repo_path")
     def test_merge_no_conflicts(self, mock_repo_path, mock_fetch, mock_checkout, mock_merge):
         mock_repo_path.return_value = "/tmp/test/repos/repo-a"
         mock_merge.return_value = (True, [])
@@ -70,10 +70,10 @@ class TestPrepareMergeConflicts(unittest.TestCase):
         self.assertEqual(result, 0)
         logger.info.assert_any_call("Merge sem conflitos em repo-a. Execute finish-merge-conflicts.")
 
-    @patch("iadev.cli.merge_remote_branch")
-    @patch("iadev.cli.checkout_new_branch_from_remote")
-    @patch("iadev.cli.fetch_origin")
-    @patch("iadev.cli.repo_path")
+    @patch("dop.cli.merge_remote_branch")
+    @patch("dop.cli.checkout_new_branch_from_remote")
+    @patch("dop.cli.fetch_origin")
+    @patch("dop.cli.repo_path")
     def test_merge_with_conflicts(self, mock_repo_path, mock_fetch, mock_checkout, mock_merge):
         mock_repo_path.return_value = "/tmp/test/repos/repo-a"
         mock_merge.return_value = (False, ["src/main.java", "src/config.xml"])
@@ -89,10 +89,10 @@ class TestPrepareMergeConflicts(unittest.TestCase):
         logger.warn.assert_any_call("  src/main.java")
         logger.warn.assert_any_call("  src/config.xml")
 
-    @patch("iadev.cli.merge_remote_branch")
-    @patch("iadev.cli.checkout_new_branch_from_remote")
-    @patch("iadev.cli.fetch_origin")
-    @patch("iadev.cli.repo_path")
+    @patch("dop.cli.merge_remote_branch")
+    @patch("dop.cli.checkout_new_branch_from_remote")
+    @patch("dop.cli.fetch_origin")
+    @patch("dop.cli.repo_path")
     def test_dry_run(self, mock_repo_path, mock_fetch, mock_checkout, mock_merge):
         mock_repo_path.return_value = "/tmp/test/repos/repo-a"
         mock_merge.return_value = (True, [])

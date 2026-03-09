@@ -1,4 +1,4 @@
-"""CLI for Git/DevOps operations via iadev."""
+"""CLI for Git/DevOps operations via dop."""
 
 from __future__ import annotations
 
@@ -491,7 +491,7 @@ class SecureArgumentParser(argparse.ArgumentParser):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = SecureArgumentParser(prog="iadev-devops")
+    parser = SecureArgumentParser(prog="dop-devops")
     parser.add_argument("--dry-run", action="store_true", help="Log actions without executing git/az")
     parser.add_argument("--workspace", default=None, help="Workspace name (default: auto-detect by CWD)")
     subparsers = parser.add_subparsers(dest="command", required=True)

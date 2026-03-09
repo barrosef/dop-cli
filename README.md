@@ -1,16 +1,16 @@
-# iadev
+# dop
 
-IA-First development workflow CLI - multi-workspace, multi-platform.
+DevOps Pipeline CLI - IA-First development workflow, multi-workspace, multi-platform.
 
 ## Install
 
 ```bash
-pip install git+https://github.com/Digital-Business-One/iadev.git
+pip install git+ssh://git@github.com/Digital-Business-One/dop.git
 ```
 
 ## Configuration
 
-Create `~/.config/iadev/config.toml` (or set `IADEV_CONFIG` to a custom path):
+Create `~/.config/dop/config.toml` (or set `DOP_CONFIG` to a custom path):
 
 ```toml
 [workspaces.optum]
@@ -38,7 +38,7 @@ reviewers_env = "AZURE_DEVOPS_REVIEWERS"
 [workspaces.optum.repos.lifesupport-api]
 dir         = "repos/lifesupport-api"
 base_branch = "OG-GLOBAL"
-pr_targets  = ["OG-GLOBAL", "desenv"]
+pr_targets  = ["OG-GLOBAL"]
 primary     = true
 
 # ... other repos
@@ -49,22 +49,39 @@ primary     = true
 ### Gate commands
 
 ```bash
-iadev context-approved OG-123
-iadev plan-approved OG-123
-iadev build-passed OG-123
-iadev change-approved OG-123
-iadev rerun plan OG-123
-iadev reset OG-123 --to plan_generated
-iadev --dry-run change-approved OG-123
+dop context-approved OG-123
+dop plan-approved OG-123
+dop build-passed OG-123
+dop change-approved OG-123
+dop conflict-solved OG-123
+dop rerun plan OG-123
+dop reset OG-123 --to plan_generated
+dop --dry-run change-approved OG-123
 ```
 
 ### DevOps commands
 
 ```bash
-iadev-devops git-pull OG-123
-iadev-devops git-push OG-123
-iadev-devops pr-create OG-123 --summary "Short summary"
-iadev-devops pr-publish OG-123
+dop-devops git-pull OG-123
+dop-devops git-push OG-123
+dop-devops pr-create OG-123 --summary "Short summary"
+dop-devops pr-publish OG-123
+```
+
+### Integration commands
+
+```bash
+dop integrate-desenv
+dop integrate-desenv --repo lifesupport-api
+dop prepare-merge-conflicts --repo optumsupport-fe
+dop finish-merge-conflicts --repo optumsupport-fe
+```
+
+### Feature conflict resolution
+
+```bash
+dop solve-conflict OG-123 --repo lifesupport-api
+dop conflict-solved OG-123
 ```
 
 ## Plan branch table requirement

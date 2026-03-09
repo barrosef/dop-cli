@@ -1,6 +1,6 @@
 import unittest
 
-from iadev import cli
+from dop import cli
 
 
 class TestCLIParsing(unittest.TestCase):

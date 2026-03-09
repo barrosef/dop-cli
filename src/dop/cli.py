@@ -1,4 +1,4 @@
-"""CLI for IA-First iadev operations."""
+"""CLI for IA-First dop operations."""
 
 from __future__ import annotations
 
@@ -194,7 +194,7 @@ def _build_conflict_error_message(pr_results: list[dict], workspace) -> str:
         "",
         "Action required:",
         "  1. Resolve the conflicts in the listed repos manually",
-        "  2. Re-run: iadev conflict-solved <JIRA-KEY>",
+        "  2. Re-run: dop conflict-solved <JIRA-KEY>",
     ]
     return "\n".join(lines)
 
@@ -301,7 +301,7 @@ def handle_change_approved(args: argparse.Namespace, logger, workspace, auth) ->
         require_stage(state, "build_passed")
     except MCPError as exc:
         raise ValidationError(
-            f"{exc} Run: iadev build-passed {args.jira_key} after validating local build."
+            f"{exc} Run: dop build-passed {args.jira_key} after validating local build."
         ) from exc
     changed = advance_stage(state, "change_approved")
     if not changed:
@@ -353,7 +353,7 @@ def handle_conflict_solved(args: argparse.Namespace, logger, workspace, auth) ->
     require_stage(state, "conflict-resolution")
     pr_results = state.get("prs")
     if not pr_results:
-        raise ValidationError("No PRs recorded. Run iadev-devops pr-create before resolving conflicts.")
+        raise ValidationError("No PRs recorded. Run dop-devops pr-create before resolving conflicts.")
 
     platform = build_platform_provider(workspace)
     _set_azure_defaults_from_prs(pr_results, workspace)
@@ -494,7 +494,7 @@ def handle_solve_conflict(args: argparse.Namespace, logger, workspace, auth) -> 
 
         if success:
             logger.info(f"Rebase sem conflitos em {repo_name}.")
-            logger.info(f"Execute: iadev conflict-solved {args.jira_key} --repo {repo_name}")
+            logger.info(f"Execute: dop conflict-solved {args.jira_key} --repo {repo_name}")
         else:
             logger.warn(f"Conflitos detectados durante rebase em {repo_name}. Arquivos:")
             for f in conflicts:
@@ -503,7 +503,7 @@ def handle_solve_conflict(args: argparse.Namespace, logger, workspace, auth) -> 
             logger.info(f"  git add <arquivos-resolvidos>")
             logger.info(f"  git rebase --continue")
             logger.info("Repita ate o rebase estar completo.")
-            logger.info(f"Depois execute: iadev conflict-solved {args.jira_key} --repo {repo_name}")
+            logger.info(f"Depois execute: dop conflict-solved {args.jira_key} --repo {repo_name}")
             # Stop on first repo with conflicts
             break
 
@@ -588,7 +588,7 @@ def handle_integrate_desenv(args: argparse.Namespace, logger, workspace, auth) -
     if conflict_repos:
         print(f"\nRepos com conflito: {', '.join(conflict_repos)}")
         for r in conflict_repos:
-            print(f"-> Execute: iadev prepare-merge-conflicts --repo {r}")
+            print(f"-> Execute: dop prepare-merge-conflicts --repo {r}")
 
     print()
     logger.info("integrate-desenv completed.")
@@ -632,7 +632,7 @@ def handle_prepare_merge_conflicts(args: argparse.Namespace, logger, workspace, 
             logger.info(f"  cd {r_dir}")
             logger.info(f"  git add <arquivos-resolvidos>")
             logger.info(f"  git commit")
-            logger.info(f"  iadev finish-merge-conflicts --repo {repo}")
+            logger.info(f"  dop finish-merge-conflicts --repo {repo}")
             summary.append(f"{repo}: CONFLITOS ({len(conflicts)} arquivos)")
 
     # Print summary
@@ -796,7 +796,7 @@ class SecureArgumentParser(argparse.ArgumentParser):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = SecureArgumentParser(prog="iadev")
+    parser = SecureArgumentParser(prog="dop")
     parser.add_argument("--dry-run", action="store_true", help="Log actions without executing git/az")
     parser.add_argument("--workspace", default=None, help="Workspace name (default: auto-detect by CWD)")
     subparsers = parser.add_subparsers(dest="command", required=True)

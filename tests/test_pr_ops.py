@@ -1,6 +1,6 @@
 import unittest
 
-from iadev import devops
+from dop import devops
 
 
 class TestPrOps(unittest.TestCase):

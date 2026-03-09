@@ -1,7 +1,7 @@
 import unittest
 
-from iadev.core.errors import SecurityViolationError
-from iadev.core.security import redact
+from dop.core.errors import SecurityViolationError
+from dop.core.security import redact
 
 
 class TestRedaction(unittest.TestCase):

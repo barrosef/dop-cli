@@ -3,9 +3,9 @@ import copy
 import unittest
 from unittest.mock import MagicMock, patch
 
-from iadev import cli
-from iadev.core.errors import ValidationError
-from iadev.platform.base import PRResult
+from dop import cli
+from dop.core.errors import ValidationError
+from dop.platform.base import PRResult
 
 
 def _make_args(jira_key="OG-123", dry_run=False, workspace=None):
@@ -60,13 +60,13 @@ def _make_state(stage="conflict-resolution", prs=None, repos=None):
 
 
 class TestConflictSolvedRebase(unittest.TestCase):
-    @patch("iadev.cli.save_state")
-    @patch("iadev.cli.load_state")
-    @patch("iadev.cli.delete_local_branch")
-    @patch("iadev.cli.list_local_branches")
-    @patch("iadev.cli.force_push_branch")
-    @patch("iadev.cli.has_pending_rebase")
-    @patch("iadev.cli.build_platform_provider")
+    @patch("dop.cli.save_state")
+    @patch("dop.cli.load_state")
+    @patch("dop.cli.delete_local_branch")
+    @patch("dop.cli.list_local_branches")
+    @patch("dop.cli.force_push_branch")
+    @patch("dop.cli.has_pending_rebase")
+    @patch("dop.cli.build_platform_provider")
     def test_force_push_after_rebase(
         self, mock_platform_builder, mock_pending, mock_force_push, mock_list_branches,
         mock_delete, mock_load, mock_save
@@ -103,10 +103,10 @@ class TestConflictSolvedRebase(unittest.TestCase):
         )
         self.assertEqual(state["stage"], "done")
 
-    @patch("iadev.cli.save_state")
-    @patch("iadev.cli.load_state")
-    @patch("iadev.cli.has_pending_rebase")
-    @patch("iadev.cli.build_platform_provider")
+    @patch("dop.cli.save_state")
+    @patch("dop.cli.load_state")
+    @patch("dop.cli.has_pending_rebase")
+    @patch("dop.cli.build_platform_provider")
     def test_error_on_pending_rebase(self, mock_platform_builder, mock_pending, mock_load, mock_save):
         state = _make_state()
         mock_load.return_value = (state, copy.deepcopy(state))
@@ -121,12 +121,12 @@ class TestConflictSolvedRebase(unittest.TestCase):
             cli.handle_conflict_solved(_make_args(), logger, ws, auth)
         self.assertIn("Rebase em andamento", str(ctx.exception))
 
-    @patch("iadev.cli.save_state")
-    @patch("iadev.cli.load_state")
-    @patch("iadev.cli.list_local_branches")
-    @patch("iadev.cli.force_push_branch")
-    @patch("iadev.cli.has_pending_rebase")
-    @patch("iadev.cli.build_platform_provider")
+    @patch("dop.cli.save_state")
+    @patch("dop.cli.load_state")
+    @patch("dop.cli.list_local_branches")
+    @patch("dop.cli.force_push_branch")
+    @patch("dop.cli.has_pending_rebase")
+    @patch("dop.cli.build_platform_provider")
     def test_verify_pr_after_push(
         self, mock_platform_builder, mock_pending, mock_force_push, mock_list_branches,
         mock_load, mock_save

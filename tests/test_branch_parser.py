@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from iadev.git.branch_parser import parse_branch_table
-from iadev.core.errors import ValidationError
+from dop.git.branch_parser import parse_branch_table
+from dop.core.errors import ValidationError
 
 
 class TestBranchParser(unittest.TestCase):

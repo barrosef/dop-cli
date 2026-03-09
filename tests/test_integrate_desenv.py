@@ -2,8 +2,8 @@ import argparse
 import unittest
 from unittest.mock import MagicMock, patch
 
-from iadev import cli
-from iadev.platform.base import PRResult
+from dop import cli
+from dop.platform.base import PRResult
 
 
 def _make_args(repo=None, dry_run=False, workspace=None):
@@ -32,9 +32,9 @@ def _make_workspace(repos=None):
 
 
 class TestIntegrateDesenv(unittest.TestCase):
-    @patch("iadev.cli.build_platform_provider")
-    @patch("iadev.cli.log_diff")
-    @patch("iadev.cli.fetch_origin")
+    @patch("dop.cli.build_platform_provider")
+    @patch("dop.cli.log_diff")
+    @patch("dop.cli.fetch_origin")
     def test_skip_when_no_new_commits(self, mock_fetch, mock_log_diff, mock_platform_builder):
         mock_log_diff.return_value = []
         platform = MagicMock()
@@ -50,9 +50,9 @@ class TestIntegrateDesenv(unittest.TestCase):
         mock_fetch.assert_called_once()
         platform.create_pr.assert_not_called()
 
-    @patch("iadev.cli.build_platform_provider")
-    @patch("iadev.cli.log_diff")
-    @patch("iadev.cli.fetch_origin")
+    @patch("dop.cli.build_platform_provider")
+    @patch("dop.cli.log_diff")
+    @patch("dop.cli.fetch_origin")
     def test_create_pr_when_diff_exists(self, mock_fetch, mock_log_diff, mock_platform_builder):
         mock_log_diff.return_value = ["abc1234 feat: something"]
         platform = MagicMock()
@@ -80,9 +80,9 @@ class TestIntegrateDesenv(unittest.TestCase):
         self.assertEqual(call_kwargs.kwargs["source_branch"], "OG-GLOBAL")
         self.assertEqual(call_kwargs.kwargs["target_branch"], "desenv")
 
-    @patch("iadev.cli.build_platform_provider")
-    @patch("iadev.cli.log_diff")
-    @patch("iadev.cli.fetch_origin")
+    @patch("dop.cli.build_platform_provider")
+    @patch("dop.cli.log_diff")
+    @patch("dop.cli.fetch_origin")
     def test_detect_conflict_on_created_pr(self, mock_fetch, mock_log_diff, mock_platform_builder):
         mock_log_diff.return_value = ["abc1234 feat: something"]
         platform = MagicMock()
@@ -107,9 +107,9 @@ class TestIntegrateDesenv(unittest.TestCase):
         self.assertEqual(result, 0)
         logger.warn.assert_called()
 
-    @patch("iadev.cli.build_platform_provider")
-    @patch("iadev.cli.log_diff")
-    @patch("iadev.cli.fetch_origin")
+    @patch("dop.cli.build_platform_provider")
+    @patch("dop.cli.log_diff")
+    @patch("dop.cli.fetch_origin")
     def test_skip_existing_active_pr(self, mock_fetch, mock_log_diff, mock_platform_builder):
         mock_log_diff.return_value = ["abc1234 feat: something"]
         existing_pr = PRResult(
@@ -134,9 +134,9 @@ class TestIntegrateDesenv(unittest.TestCase):
         self.assertEqual(result, 0)
         platform.create_pr.assert_not_called()
 
-    @patch("iadev.cli.build_platform_provider")
-    @patch("iadev.cli.log_diff")
-    @patch("iadev.cli.fetch_origin")
+    @patch("dop.cli.build_platform_provider")
+    @patch("dop.cli.log_diff")
+    @patch("dop.cli.fetch_origin")
     def test_dry_run(self, mock_fetch, mock_log_diff, mock_platform_builder):
         mock_log_diff.return_value = ["abc1234 feat: something"]
         platform = MagicMock()

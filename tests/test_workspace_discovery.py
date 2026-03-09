@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from iadev.config.discovery import find_workspace_by_cwd, get_workspace
-from iadev.core.errors import ValidationError
+from dop.config.discovery import find_workspace_by_cwd, get_workspace
+from dop.core.errors import ValidationError
 
 
 class TestWorkspaceDiscovery(unittest.TestCase):
@@ -26,10 +26,10 @@ root = "{self.ws2}"
 """.lstrip(),
             encoding="utf-8",
         )
-        os.environ["IADEV_CONFIG"] = str(self.config_path)
+        os.environ["DOP_CONFIG"] = str(self.config_path)
 
     def tearDown(self):
-        os.environ.pop("IADEV_CONFIG", None)
+        os.environ.pop("DOP_CONFIG", None)
         self.tmp.cleanup()
 
     def test_find_workspace_by_cwd(self):
