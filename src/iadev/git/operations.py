@@ -183,6 +183,203 @@ def pull_branch(
     _run_git_remote(args, repo_dir=repo_dir, auth=auth, dry_run=dry_run, logger=logger)
 
 
+def fetch_origin(
+    repo_name: str,
+    *,
+    workspace: WorkspaceConfig,
+    auth: GitAuthProvider,
+    dry_run: bool = False,
+    logger=None,
+) -> None:
+    """git fetch origin."""
+    repo_dir = repo_path(workspace, repo_name)
+    _run_git_remote(
+        ["fetch", "origin"],
+        repo_dir=repo_dir,
+        auth=auth,
+        dry_run=dry_run,
+        logger=logger,
+    )
+
+
+def checkout_branch(
+    repo_name: str,
+    branch_name: str,
+    *,
+    workspace: WorkspaceConfig,
+    dry_run: bool = False,
+    logger=None,
+) -> None:
+    """git checkout <branch> (existing branch)."""
+    repo_dir = repo_path(workspace, repo_name)
+    run_command(
+        ["git", "checkout", branch_name],
+        cwd=repo_dir,
+        dry_run=dry_run,
+        logger=logger,
+    )
+
+
+def checkout_new_branch_from_remote(
+    repo_name: str,
+    branch_name: str,
+    remote_base: str,
+    *,
+    workspace: WorkspaceConfig,
+    dry_run: bool = False,
+    logger=None,
+) -> None:
+    """git checkout -B <branch_name> origin/<remote_base>."""
+    repo_dir = repo_path(workspace, repo_name)
+    run_command(
+        ["git", "checkout", "-B", branch_name, f"origin/{remote_base}"],
+        cwd=repo_dir,
+        dry_run=dry_run,
+        logger=logger,
+    )
+
+
+def merge_remote_branch(
+    repo_name: str,
+    remote_branch: str,
+    *,
+    workspace: WorkspaceConfig,
+    dry_run: bool = False,
+    logger=None,
+) -> tuple[bool, list[str]]:
+    """git merge origin/<remote_branch>. Returns (success, conflict_files)."""
+    repo_dir = repo_path(workspace, repo_name)
+    try:
+        run_command(
+            ["git", "merge", f"origin/{remote_branch}"],
+            cwd=repo_dir,
+            dry_run=dry_run,
+            logger=logger,
+        )
+        return True, []
+    except ProcessError:
+        conflicts = get_conflict_files(repo_name, workspace=workspace)
+        if conflicts:
+            return False, conflicts
+        raise
+
+
+def rebase_on_base(
+    repo_name: str,
+    base_branch: str,
+    *,
+    workspace: WorkspaceConfig,
+    dry_run: bool = False,
+    logger=None,
+) -> tuple[bool, list[str]]:
+    """git rebase origin/<base_branch>. Returns (success, conflict_files)."""
+    repo_dir = repo_path(workspace, repo_name)
+    try:
+        run_command(
+            ["git", "rebase", f"origin/{base_branch}"],
+            cwd=repo_dir,
+            dry_run=dry_run,
+            logger=logger,
+        )
+        return True, []
+    except ProcessError:
+        conflicts = get_conflict_files(repo_name, workspace=workspace)
+        if conflicts:
+            return False, conflicts
+        raise
+
+
+def force_push_branch(
+    repo_name: str,
+    branch_name: str,
+    *,
+    state: dict,
+    workspace: WorkspaceConfig,
+    auth: GitAuthProvider,
+    dry_run: bool = False,
+    logger=None,
+) -> None:
+    """Push with --force-with-lease (post-rebase of feature branch)."""
+    require_stage(state, "change_approved")
+    repo_dir = repo_path(workspace, repo_name)
+    _run_git_remote(
+        ["push", "--force-with-lease", "origin", branch_name],
+        repo_dir=repo_dir,
+        auth=auth,
+        dry_run=dry_run,
+        logger=logger,
+    )
+
+
+def push_branch_simple(
+    repo_name: str,
+    branch_name: str,
+    *,
+    workspace: WorkspaceConfig,
+    auth: GitAuthProvider,
+    dry_run: bool = False,
+    logger=None,
+) -> None:
+    """Push branch without state check. For integration operations."""
+    repo_dir = repo_path(workspace, repo_name)
+    _run_git_remote(
+        ["push", "-u", "origin", branch_name],
+        repo_dir=repo_dir,
+        auth=auth,
+        dry_run=dry_run,
+        logger=logger,
+    )
+
+
+def has_pending_rebase(repo_name: str, *, workspace: WorkspaceConfig) -> bool:
+    """Check if .git/rebase-merge/ or .git/rebase-apply/ exist."""
+    repo_dir = repo_path(workspace, repo_name)
+    return (repo_dir / ".git" / "rebase-merge").exists() or (repo_dir / ".git" / "rebase-apply").exists()
+
+
+def has_pending_merge(repo_name: str, *, workspace: WorkspaceConfig) -> bool:
+    """Check if .git/MERGE_HEAD exists."""
+    repo_dir = repo_path(workspace, repo_name)
+    return (repo_dir / ".git" / "MERGE_HEAD").exists()
+
+
+def get_conflict_files(repo_name: str, *, workspace: WorkspaceConfig) -> list[str]:
+    """git diff --name-only --diff-filter=U."""
+    repo_dir = repo_path(workspace, repo_name)
+    try:
+        result = run_command(
+            ["git", "diff", "--name-only", "--diff-filter=U"],
+            cwd=repo_dir,
+        )
+        if not result.stdout:
+            return []
+        return [f.strip() for f in result.stdout.splitlines() if f.strip()]
+    except ProcessError:
+        return []
+
+
+def log_diff(
+    repo_name: str,
+    from_ref: str,
+    to_ref: str,
+    *,
+    workspace: WorkspaceConfig,
+    dry_run: bool = False,
+    logger=None,
+) -> list[str]:
+    """git log --oneline <from_ref>..<to_ref>. Returns list of lines."""
+    repo_dir = repo_path(workspace, repo_name)
+    result = run_command(
+        ["git", "log", "--oneline", f"{from_ref}..{to_ref}"],
+        cwd=repo_dir,
+        dry_run=dry_run,
+        logger=logger,
+    )
+    if not result.stdout:
+        return []
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
 def delete_local_branch(
     repo_name: str,
     branch_name: str,

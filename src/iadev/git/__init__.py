@@ -9,6 +9,17 @@ from .operations import (
     push_branch,
     pull_branch,
     delete_local_branch,
+    fetch_origin,
+    checkout_branch,
+    checkout_new_branch_from_remote,
+    merge_remote_branch,
+    rebase_on_base,
+    force_push_branch,
+    push_branch_simple,
+    has_pending_rebase,
+    has_pending_merge,
+    get_conflict_files,
+    log_diff,
 )
 
 __all__ = [
@@ -22,4 +33,15 @@ __all__ = [
     "push_branch",
     "pull_branch",
     "delete_local_branch",
+    "fetch_origin",
+    "checkout_branch",
+    "checkout_new_branch_from_remote",
+    "merge_remote_branch",
+    "rebase_on_base",
+    "force_push_branch",
+    "push_branch_simple",
+    "has_pending_rebase",
+    "has_pending_merge",
+    "get_conflict_files",
+    "log_diff",
 ]
