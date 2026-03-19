@@ -66,6 +66,42 @@ class TestCLIParsing(unittest.TestCase):
         self.assertEqual(args.repo, "optumsupport-fe")
         self.assertEqual(args.func, cli.handle_finish_merge_conflicts)
 
+    def test_git_pull_parsing(self):
+        parser = cli.build_parser()
+        args = parser.parse_args(["git-pull", "OG-101"])
+        self.assertEqual(args.command, "git-pull")
+        self.assertEqual(args.jira_key, "OG-101")
+        self.assertIsNone(args.repo)
+        self.assertIsNone(args.branch)
+        self.assertEqual(args.func, cli.handle_git_pull)
+
+    def test_git_pull_with_repo_and_branch(self):
+        parser = cli.build_parser()
+        args = parser.parse_args(["git-pull", "OG-101", "--repo", "optumsupport-be", "--branch", "desenv"])
+        self.assertEqual(args.repo, "optumsupport-be")
+        self.assertEqual(args.branch, "desenv")
+
+    def test_git_push_parsing(self):
+        parser = cli.build_parser()
+        args = parser.parse_args(["git-push", "OG-101"])
+        self.assertEqual(args.command, "git-push")
+        self.assertEqual(args.jira_key, "OG-101")
+        self.assertEqual(args.func, cli.handle_git_push)
+
+    def test_pr_create_parsing(self):
+        parser = cli.build_parser()
+        args = parser.parse_args(["pr-create", "OG-101"])
+        self.assertEqual(args.command, "pr-create")
+        self.assertEqual(args.jira_key, "OG-101")
+        self.assertEqual(args.func, cli.handle_pr_create)
+
+    def test_pr_publish_parsing(self):
+        parser = cli.build_parser()
+        args = parser.parse_args(["pr-publish", "OG-101"])
+        self.assertEqual(args.command, "pr-publish")
+        self.assertEqual(args.jira_key, "OG-101")
+        self.assertEqual(args.func, cli.handle_pr_publish)
+
 
 if __name__ == "__main__":
     unittest.main()

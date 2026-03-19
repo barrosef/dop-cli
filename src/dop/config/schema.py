@@ -10,6 +10,8 @@ class RepoConfig:
     base_branch: str
     pr_targets: list[str]
     primary: bool = True
+    azure_org: str | None = None
+    azure_project: str | None = None
 
 
 @dataclass

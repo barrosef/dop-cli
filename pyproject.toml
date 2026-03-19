@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dop"
-version = "0.2.0"
+version = "0.3.0"
 description = "DevOps Pipeline CLI - IA-First development workflow, multi-workspace, multi-platform"
 requires-python = ">=3.11"
 dependencies = [

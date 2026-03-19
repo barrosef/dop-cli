@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +13,7 @@ from urllib.parse import urlparse
 
 from .config import get_workspace
 from .core.errors import MCPError, SecurityViolationError, ValidationError
+from .core.fs import read_text, write_text
 from .core.logging_utils import get_logger
 from .core.security import guard_text, redact
 from .core.state import (
@@ -31,6 +33,7 @@ from .core.state import (
 from .git import (
     checkout_branch,
     checkout_new_branch_from_remote,
+    commit_changes,
     create_branch,
     current_branch,
     delete_local_branch,
@@ -39,23 +42,27 @@ from .git import (
     get_conflict_files,
     has_pending_merge,
     has_pending_rebase,
+    has_uncommitted_changes,
     list_local_branches,
     log_diff,
     merge_remote_branch,
     parse_branch_table,
+    pull_branch,
     push_branch,
     push_branch_simple,
     rebase_on_base,
     repo_path,
 )
 from .git.auth import build_auth_provider
-from .platform import build_platform_provider
+from .platform import PRResult, build_platform_provider
 
 STATE_FILE_NAME = ".state.json"
 LOGS_DIR_NAME = "logs"
 
 DESENV_BRANCH = "desenv"
 MERGE_CONFLICTS_BRANCH = "merge-conflicts-desenv-from-OG-GLOBAL"
+
+_BRANCH_PATTERN = re.compile(r"^\s*[-*]?\s*Branch\s*:\s*(\S+)", re.IGNORECASE)
 
 
 def _demand_dir(workspace, jira_key: str) -> Path:
@@ -86,6 +93,8 @@ def _command_string(args: argparse.Namespace) -> str:
         parts.append(args.jira_key)
     if getattr(args, "repo", None):
         parts.extend(["--repo", args.repo])
+    if getattr(args, "branch", None):
+        parts.extend(["--branch", args.branch])
     if getattr(args, "to_stage", None):
         parts.extend(["--to", args.to_stage])
     if getattr(args, "artifact", None):
@@ -134,26 +143,22 @@ def _repo_name_from_pr(pr: dict, workspace) -> str | None:
     return repo_suffix
 
 
-def _delete_clean_local_branches(pr_results: list[dict], *, workspace, dry_run: bool, logger) -> None:
-    conflict_by_branch: dict[tuple[str, str], bool] = {}
+def _switch_repos_to_base_branches(pr_results: list[dict], *, workspace, dry_run: bool, logger) -> None:
+    """Switch all impacted repos back to their base branches (keep local feature branches)."""
+    switched: set[str] = set()
     for pr in pr_results:
         repo_name = _repo_name_from_pr(pr, workspace)
-        branch = pr.get("source_branch")
-        if not repo_name or not branch:
+        if not repo_name or repo_name in switched:
             continue
-        key = (repo_name, branch)
-        conflict_flag = pr.get("has_conflict")
-        if conflict_flag is None:
-            conflict_flag = True
-        conflict_by_branch[key] = conflict_by_branch.get(key, False) or bool(conflict_flag)
-    for (repo_name, branch), has_conflict in conflict_by_branch.items():
-        if has_conflict:
+        repo_cfg = workspace.repos.get(repo_name)
+        if not repo_cfg:
             continue
         try:
-            delete_local_branch(repo_name, branch, workspace=workspace, dry_run=dry_run, logger=logger)
-        except ValidationError as exc:
+            checkout_branch(repo_name, repo_cfg.base_branch, workspace=workspace, dry_run=dry_run, logger=logger)
+        except Exception:
             if logger:
-                logger.warn(f"Unable to delete branch {branch} in {repo_name}: {exc}")
+                logger.warn(f"Could not switch {repo_name} back to {repo_cfg.base_branch}.")
+        switched.add(repo_name)
 
 
 def _collect_repo_conflicts(pr_results: list[dict], workspace) -> tuple[dict[str, bool], dict[str, set[str]]]:
@@ -207,6 +212,179 @@ def _load_state(workspace, jira_key: str, dry_run: bool):
         repo_names=_repo_order(workspace),
         create=not dry_run,
     )
+
+
+# ---------------------------------------------------------------------------
+# PR doc & git helpers (unified from dop-devops)
+# ---------------------------------------------------------------------------
+
+def _pr_doc_glob(repo_name: str, workspace) -> str:
+    suffix = _pr_doc_suffix(repo_name, workspace)
+    prefix = workspace.pr_doc_prefix
+    base = prefix[:-2] if len(prefix) > 2 else prefix
+    return f"{base}*-{suffix}.md"
+
+
+def _pr_doc_paths(jira_key: str, repo_name: str, workspace) -> list[Path]:
+    demand_dir = _demand_dir(workspace, jira_key)
+    pattern = _pr_doc_glob(repo_name, workspace)
+    return sorted(demand_dir.glob(pattern))
+
+
+def _parse_pr_doc(path: Path) -> tuple[str, str, str | None]:
+    content = read_text(path)
+    if content is None:
+        raise ValidationError(f"PR doc not found: {path}")
+    title = ""
+    for line in content.splitlines():
+        if line.strip():
+            title = line.lstrip("#").strip()
+            break
+    if not title:
+        raise ValidationError(f"Missing PR title in {path}")
+    branch = None
+    for line in content.splitlines():
+        match = _BRANCH_PATTERN.match(line)
+        if match:
+            branch = match.group(1).strip("`")
+            break
+    return title, content, branch
+
+
+def _branches_from_docs(jira_key: str, repo_name: str, workspace, logger) -> list[str]:
+    branches: list[str] = []
+    for doc_path in _pr_doc_paths(jira_key, repo_name, workspace):
+        _, _, branch = _parse_pr_doc(doc_path)
+        if branch:
+            branches.append(branch)
+    unique = []
+    for branch in branches:
+        if branch not in unique:
+            unique.append(branch)
+    if not unique:
+        fallback = current_branch(repo_name, workspace, logger=logger)
+        if not fallback:
+            raise ValidationError(f"Unable to infer branch for {repo_name}.")
+        logger.warn(f"Branch not found in PR docs for {repo_name}; using {fallback}.")
+        unique.append(fallback)
+    return unique
+
+
+def _is_jira_branch(branch: str, jira_key: str) -> bool:
+    return branch == jira_key or branch.startswith(f"{jira_key}-")
+
+
+def _branches_for_jira(repo_name: str, jira_key: str, *, workspace, dry_run: bool, logger) -> list[str]:
+    branches = list_local_branches(repo_name, workspace, dry_run=False, logger=logger)
+    matched = [branch for branch in branches if _is_jira_branch(branch, jira_key)]
+    if matched and logger:
+        logger.info(f"Found branches for {jira_key} in {repo_name}: {', '.join(matched)}")
+    return matched
+
+
+def _repo_is_skipped(state: dict, repo_name: str) -> bool:
+    repo_state = state.get("repos", {}).get(repo_name, {})
+    return repo_state.get("status") == "skipped"
+
+
+def _pr_result_to_dict(result: PRResult, workspace) -> dict:
+    return {
+        "repo": _pr_doc_suffix(result.repo_name, workspace),
+        "repo_name": result.repo_name,
+        "source_branch": result.source_branch,
+        "target_branch": result.target_branch,
+        "web_url": result.web_url,
+        "pull_request_id": result.pr_id,
+        "merge_status": result.merge_status,
+        "has_conflict": result.has_conflict,
+    }
+
+
+def _update_repo_statuses_from_results(state: dict, pr_results: list[dict], workspace) -> None:
+    repos_state = state.setdefault("repos", {})
+    conflict_by_repo: dict[str, bool] = {}
+    for pr in pr_results:
+        repo_name = _repo_name_from_pr(pr, workspace)
+        if not repo_name:
+            continue
+        conflict_flag = pr.get("has_conflict")
+        if conflict_flag is None:
+            conflict_flag = True
+        conflict_by_repo[repo_name] = conflict_by_repo.get(repo_name, False) or bool(conflict_flag)
+    for repo_name, has_conflict in conflict_by_repo.items():
+        repo_state = repos_state.setdefault(repo_name, {"status": "pending"})
+        if repo_state.get("status") != "pending":
+            continue
+        repo_state["status"] = "conflict-resolution" if has_conflict else "done"
+
+
+def format_teams_message(jira_key: str, jira_url: str | None, pr_results: list[dict]) -> str:
+    link = jira_url or ""
+    lines = [f"PRs - {jira_key} - {link}"]
+    for index, pr in enumerate(pr_results, start=1):
+        link = pr.get("web_url") or "<link indisponivel>"
+        conflict = "Sim" if pr.get("has_conflict") else "Não"
+        lines.extend(
+            [
+                f"PR {index}",
+                f"App: {pr.get('repo')}",
+                f"From {pr.get('source_branch')} to {pr.get('target_branch')}",
+                f"Link: {link}",
+                f"Conflito: {conflict}",
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip()
+
+
+def write_teams_message(jira_key: str, jira_url: str | None, pr_results: list[dict], *, workspace, dry_run: bool) -> str:
+    message = format_teams_message(jira_key, jira_url, pr_results)
+    path = _demand_dir(workspace, jira_key) / "03-pr-team-message.md"
+    write_text(path, message + "\n", dry_run=dry_run)
+    return str(path)
+
+
+def _create_prs_for_repo(
+    *,
+    repo_name: str,
+    source_branch: str,
+    title: str,
+    description: str,
+    state: dict,
+    workspace,
+    platform,
+    dry_run: bool,
+    logger,
+) -> list[dict]:
+    require_stage(state, "change_approved")
+    repo_cfg = workspace.repos.get(repo_name)
+    if not repo_cfg:
+        raise ValidationError(f"Missing repo config for {repo_name}")
+    results: list[dict] = []
+    for target in repo_cfg.pr_targets:
+        pr = platform.create_pr(
+            repo_name=repo_name,
+            source_branch=source_branch,
+            target_branch=target,
+            title=title,
+            description=description,
+            reviewers=None,
+            dry_run=dry_run,
+            logger=logger,
+        )
+        results.append(_pr_result_to_dict(pr, workspace))
+    return results
+
+
+def _commit_message_from_title(title: str, repo_name: str, workspace) -> str:
+    """Derive semantic commit message from PR doc title by stripping repo suffix."""
+    suffix = f" - {_pr_doc_suffix(repo_name, workspace)}"
+    if title.endswith(suffix):
+        return title[: -len(suffix)]
+    suffix2 = f" - {repo_name}"
+    if title.endswith(suffix2):
+        return title[: -len(suffix2)]
+    return title
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +491,241 @@ def handle_change_approved(args: argparse.Namespace, logger, workspace, auth) ->
 
 
 # ---------------------------------------------------------------------------
+# Git/DevOps handlers (unified from dop-devops)
+# ---------------------------------------------------------------------------
+
+def handle_git_pull(args: argparse.Namespace, logger, workspace, auth) -> int:
+    state, original = _load_state(workspace, args.jira_key, args.dry_run)
+    repos = [args.repo] if args.repo else _repo_order(workspace)
+    for repo in repos:
+        if _repo_is_skipped(state, repo):
+            continue
+        branch = getattr(args, "branch", None)
+        if not branch:
+            repo_cfg = workspace.repos.get(repo)
+            if not repo_cfg:
+                raise ValidationError(f"Missing repo config for {repo}")
+            branch = repo_cfg.base_branch
+        pull_branch(repo, branch_name=branch, workspace=workspace, auth=auth, dry_run=args.dry_run, logger=logger)
+    append_command_log(state, _command_string(args), user=getpass.getuser())
+    save_state(_state_path(workspace, args.jira_key), state, original, dry_run=args.dry_run)
+    logger.info("git-pull completed.")
+    return 0
+
+
+def handle_git_push(args: argparse.Namespace, logger, workspace, auth) -> int:
+    state, original = _load_state(workspace, args.jira_key, args.dry_run)
+    require_stage(state, "change_approved")
+    if args.repo:
+        if _repo_is_skipped(state, args.repo):
+            raise ValidationError(f"Repo {args.repo} is marked as skipped.")
+        branches = [args.branch] if args.branch else _branches_from_docs(args.jira_key, args.repo, workspace, logger)
+        for branch in branches:
+            push_branch(
+                args.repo,
+                branch,
+                state=state,
+                workspace=workspace,
+                auth=auth,
+                dry_run=args.dry_run,
+                logger=logger,
+            )
+    else:
+        if getattr(args, "branch", None):
+            raise ValidationError("--branch requires --repo")
+        for repo in _repo_order(workspace):
+            if _repo_is_skipped(state, repo):
+                continue
+            for branch in _branches_from_docs(args.jira_key, repo, workspace, logger):
+                push_branch(
+                    repo,
+                    branch,
+                    state=state,
+                    workspace=workspace,
+                    auth=auth,
+                    dry_run=args.dry_run,
+                    logger=logger,
+                )
+    append_command_log(state, _command_string(args), user=getpass.getuser())
+    save_state(_state_path(workspace, args.jira_key), state, original, dry_run=args.dry_run)
+    logger.info("git-push completed.")
+    return 0
+
+
+def handle_pr_create(args: argparse.Namespace, logger, workspace, auth) -> int:
+    state, original = _load_state(workspace, args.jira_key, args.dry_run)
+    require_stage(state, "change_approved")
+    platform = build_platform_provider(workspace)
+    repos = [args.repo] if args.repo else _repo_order(workspace)
+    results: list[dict] = []
+    for repo in repos:
+        if _repo_is_skipped(state, repo):
+            continue
+        doc_paths = _pr_doc_paths(args.jira_key, repo, workspace)
+        if not doc_paths:
+            raise ValidationError(f"Missing PR docs for {repo}.")
+        for doc_path in doc_paths:
+            title, description, branch = _parse_pr_doc(doc_path)
+            record_artifact(state, doc_path.name, demand_dir=_demand_dir(workspace, args.jira_key))
+            if not branch:
+                branch = current_branch(repo, workspace, logger=logger)
+                if not branch:
+                    raise ValidationError(f"Missing source branch for {repo}.")
+                logger.warn(f"Branch not found in {doc_path.name}; using {branch}.")
+            results.extend(
+                _create_prs_for_repo(
+                    repo_name=repo,
+                    source_branch=branch,
+                    title=title,
+                    description=description,
+                    state=state,
+                    workspace=workspace,
+                    platform=platform,
+                    dry_run=args.dry_run,
+                    logger=logger,
+                )
+            )
+    if not results:
+        raise ValidationError("No PRs created.")
+    state["prs"] = results
+    _update_repo_statuses_from_results(state, results, workspace)
+    advance_stage(state, "pr_docs_generated")
+    advance_stage(state, "prs_created")
+    has_conflict = any(pr.get("has_conflict") is True or pr.get("has_conflict") is None for pr in results)
+    _switch_repos_to_base_branches(results, workspace=workspace, dry_run=args.dry_run, logger=logger)
+    if has_conflict:
+        advance_stage(state, "conflict-resolution")
+    else:
+        advance_stage(state, "done")
+    jira_url = state.get("jiraUrl")
+    message_path = write_teams_message(args.jira_key, jira_url, results, workspace=workspace, dry_run=args.dry_run)
+    record_artifact(state, "03-pr-team-message.md", demand_dir=_demand_dir(workspace, args.jira_key))
+    if has_conflict:
+        logger.warn("PRs created with conflicts. Check the Teams message.")
+    append_command_log(state, _command_string(args), user=getpass.getuser())
+    save_state(_state_path(workspace, args.jira_key), state, original, dry_run=args.dry_run)
+    logger.info(f"PRs created. Teams message saved at {message_path}.")
+    return 0
+
+
+def handle_pr_publish(args: argparse.Namespace, logger, workspace, auth) -> int:
+    state, original = _load_state(workspace, args.jira_key, args.dry_run)
+    require_stage(state, "change_approved")
+    platform = build_platform_provider(workspace)
+    results: list[dict] = []
+    repos_with_branches: list[str] = []
+    for repo in _repo_order(workspace):
+        if _repo_is_skipped(state, repo):
+            continue
+        branches = _branches_for_jira(repo, args.jira_key, workspace=workspace, dry_run=args.dry_run, logger=logger)
+        if not branches:
+            continue
+        repos_with_branches.append(repo)
+        doc_paths = _pr_doc_paths(args.jira_key, repo, workspace)
+        if not doc_paths:
+            raise ValidationError(f"Missing PR docs for {repo}.")
+        doc_specs: list[tuple[Path, str, str, str]] = []
+        doc_branches: list[str] = []
+        for doc_path in doc_paths:
+            title, description, branch = _parse_pr_doc(doc_path)
+            if not branch:
+                if len(branches) == 1:
+                    branch = branches[0]
+                    logger.warn(f"Branch not found in {doc_path.name}; using {branch}.")
+                else:
+                    raise ValidationError(f"Missing branch in PR doc {doc_path.name} for {repo}.")
+            if not _is_jira_branch(branch, args.jira_key):
+                raise ValidationError(
+                    f"Branch {branch} in {doc_path.name} does not match {args.jira_key}."
+                )
+            doc_branches.append(branch)
+            doc_specs.append((doc_path, title, description, branch))
+        missing_docs = sorted(set(branches) - set(doc_branches))
+        if missing_docs:
+            raise ValidationError(
+                f"Missing PR docs for branches in {repo}: {', '.join(missing_docs)}"
+            )
+        missing_branches = sorted(set(doc_branches) - set(branches))
+        if missing_branches:
+            raise ValidationError(
+                f"Branch(es) not found in {repo}: {', '.join(missing_branches)}"
+            )
+        # Commit changes (semantic commit from PR doc title)
+        committed: set[str] = set()
+        for _, doc_title, _, branch in doc_specs:
+            if branch in committed:
+                continue
+            if has_uncommitted_changes(repo, workspace=workspace, logger=logger):
+                commit_msg = _commit_message_from_title(doc_title, repo, workspace)
+                logger.info(f"Committing changes in {repo}: {commit_msg}")
+                commit_changes(
+                    repo,
+                    commit_msg,
+                    state=state,
+                    workspace=workspace,
+                    dry_run=args.dry_run,
+                    logger=logger,
+                )
+            else:
+                logger.info(f"No uncommitted changes in {repo}; skipping commit.")
+            committed.add(branch)
+        # Push branches
+        pushed: set[str] = set()
+        for _, _, _, branch in doc_specs:
+            if branch in pushed:
+                continue
+            push_branch(
+                repo,
+                branch,
+                state=state,
+                workspace=workspace,
+                auth=auth,
+                dry_run=args.dry_run,
+                logger=logger,
+            )
+            pushed.add(branch)
+        # Create PRs
+        for doc_path, title, description, branch in doc_specs:
+            record_artifact(state, doc_path.name, demand_dir=_demand_dir(workspace, args.jira_key))
+            results.extend(
+                _create_prs_for_repo(
+                    repo_name=repo,
+                    source_branch=branch,
+                    title=title,
+                    description=description,
+                    state=state,
+                    workspace=workspace,
+                    platform=platform,
+                    dry_run=args.dry_run,
+                    logger=logger,
+                )
+            )
+    if not repos_with_branches:
+        raise ValidationError(f"No branches found for {args.jira_key}.")
+    if not results:
+        raise ValidationError("No PRs created.")
+    state["prs"] = results
+    _update_repo_statuses_from_results(state, results, workspace)
+    advance_stage(state, "pr_docs_generated")
+    advance_stage(state, "prs_created")
+    has_conflict = any(pr.get("has_conflict") is True or pr.get("has_conflict") is None for pr in results)
+    _switch_repos_to_base_branches(results, workspace=workspace, dry_run=args.dry_run, logger=logger)
+    if has_conflict:
+        advance_stage(state, "conflict-resolution")
+    else:
+        advance_stage(state, "done")
+    jira_url = state.get("jiraUrl")
+    message_path = write_teams_message(args.jira_key, jira_url, results, workspace=workspace, dry_run=args.dry_run)
+    record_artifact(state, "03-pr-team-message.md", demand_dir=_demand_dir(workspace, args.jira_key))
+    if has_conflict:
+        logger.warn("PRs created with conflicts. Check the Teams message.")
+    append_command_log(state, _command_string(args), user=getpass.getuser())
+    save_state(_state_path(workspace, args.jira_key), state, original, dry_run=args.dry_run)
+    logger.info(f"PRs created. Teams message saved at {message_path}.")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # PR conflict resolution handlers
 # ---------------------------------------------------------------------------
 
@@ -353,7 +766,7 @@ def handle_conflict_solved(args: argparse.Namespace, logger, workspace, auth) ->
     require_stage(state, "conflict-resolution")
     pr_results = state.get("prs")
     if not pr_results:
-        raise ValidationError("No PRs recorded. Run dop-devops pr-create before resolving conflicts.")
+        raise ValidationError("No PRs recorded. Run dop pr-create before resolving conflicts.")
 
     platform = build_platform_provider(workspace)
     _set_azure_defaults_from_prs(pr_results, workspace)
@@ -442,7 +855,7 @@ def handle_conflict_solved(args: argparse.Namespace, logger, workspace, auth) ->
             )
         repo_status["status"] = "done"
 
-    _delete_clean_local_branches(refreshed, workspace=workspace, dry_run=args.dry_run, logger=logger)
+    _switch_repos_to_base_branches(refreshed, workspace=workspace, dry_run=args.dry_run, logger=logger)
     advance_stage(state, "done")
     append_command_log(state, _command_string(args), user=getpass.getuser())
     save_state(_state_path(workspace, args.jira_key), state, original, dry_run=args.dry_run)
@@ -515,6 +928,28 @@ def handle_solve_conflict(args: argparse.Namespace, logger, workspace, auth) -> 
 # ---------------------------------------------------------------------------
 # Integration handlers (no JIRA key)
 # ---------------------------------------------------------------------------
+
+def handle_update_repos(args: argparse.Namespace, logger, workspace, auth) -> int:
+    """Pull base branches (OG-GLOBAL/desenv) for all repos. Called before starting a new demand."""
+    repos = [args.repo] if getattr(args, "repo", None) else _repo_order(workspace)
+    for repo in repos:
+        repo_cfg = workspace.repos.get(repo)
+        if not repo_cfg:
+            raise ValidationError(f"Unknown repo: {repo}")
+        base_branch = repo_cfg.base_branch
+        branches_to_pull = [base_branch]
+        if base_branch != DESENV_BRANCH and DESENV_BRANCH in (t for t in repo_cfg.pr_targets):
+            branches_to_pull.append(DESENV_BRANCH)
+        for branch in branches_to_pull:
+            logger.info(f"Pulling {branch} in {repo}...")
+            try:
+                checkout_branch(repo, branch, workspace=workspace, dry_run=args.dry_run, logger=logger)
+                pull_branch(repo, branch_name=branch, workspace=workspace, auth=auth, dry_run=args.dry_run, logger=logger)
+            except Exception as exc:
+                logger.warn(f"Could not pull {branch} in {repo}: {exc}")
+    logger.info("update-repos completed.")
+    return 0
+
 
 def handle_integrate_desenv(args: argparse.Namespace, logger, workspace, auth) -> int:
     platform = build_platform_provider(workspace)
@@ -846,6 +1281,29 @@ def build_parser() -> argparse.ArgumentParser:
     invalidate_parser.add_argument("artifact")
     invalidate_parser.set_defaults(func=handle_invalidate, command="invalidate")
 
+    # --- Git/DevOps commands (unified from dop-devops) ---
+
+    pull_parser = subparsers.add_parser("git-pull")
+    add_jira_arg(pull_parser)
+    add_repo_arg(pull_parser)
+    pull_parser.add_argument("--branch", default=None)
+    pull_parser.set_defaults(func=handle_git_pull, command="git-pull")
+
+    push_parser = subparsers.add_parser("git-push")
+    add_jira_arg(push_parser)
+    add_repo_arg(push_parser)
+    push_parser.add_argument("--branch", default=None)
+    push_parser.set_defaults(func=handle_git_push, command="git-push")
+
+    pr_create_parser = subparsers.add_parser("pr-create")
+    add_jira_arg(pr_create_parser)
+    add_repo_arg(pr_create_parser)
+    pr_create_parser.set_defaults(func=handle_pr_create, command="pr-create")
+
+    publish_parser = subparsers.add_parser("pr-publish")
+    add_jira_arg(publish_parser)
+    publish_parser.set_defaults(func=handle_pr_publish, command="pr-publish")
+
     # --- Feature conflict resolution (requires JIRA key) ---
 
     solve_parser = subparsers.add_parser("solve-conflict")
@@ -854,6 +1312,10 @@ def build_parser() -> argparse.ArgumentParser:
     solve_parser.set_defaults(func=handle_solve_conflict, command="solve-conflict")
 
     # --- Integration commands (no JIRA key) ---
+
+    update_repos_parser = subparsers.add_parser("update-repos")
+    add_repo_arg(update_repos_parser)
+    update_repos_parser.set_defaults(func=handle_update_repos, command="update-repos")
 
     integrate_parser = subparsers.add_parser("integrate-desenv")
     add_repo_arg(integrate_parser)

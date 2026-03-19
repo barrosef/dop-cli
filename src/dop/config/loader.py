@@ -36,6 +36,8 @@ def _parse_workspace(name: str, data: dict) -> WorkspaceConfig:
             base_branch=repo_data["base_branch"],
             pr_targets=repo_data.get("pr_targets", []),
             primary=repo_data.get("primary", True),
+            azure_org=repo_data.get("azure_org"),
+            azure_project=repo_data.get("azure_project"),
         )
 
     creds_data = data.get("credentials", {})

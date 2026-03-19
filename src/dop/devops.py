@@ -531,6 +531,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    import warnings
+
+    warnings.warn(
+        "dop-devops is deprecated. Use 'dop' instead (commands: git-pull, git-push, pr-create, pr-publish).",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    print(
+        "WARNING: dop-devops is deprecated. Use 'dop' instead "
+        "(commands: git-pull, git-push, pr-create, pr-publish).",
+        file=sys.stderr,
+    )
+
     parser = build_parser()
     args = parser.parse_args(argv)
 

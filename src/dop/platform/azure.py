@@ -182,8 +182,9 @@ class AzurePlatform(PlatformProvider):
     def _derive_web_url(self, repo_name: str, pr_id: int | str | None) -> str | None:
         if not pr_id:
             return None
-        org_slug = self._org_slug(self._azure_org())
-        project = self._azure_project()
+        org_url = self._repo_azure_org(repo_name) or self._azure_org()
+        project = self._repo_azure_project(repo_name) or self._azure_project()
+        org_slug = self._org_slug(org_url)
         if not org_slug or not project:
             return None
         remote_repo = self._pr_doc_suffix(repo_name)
@@ -256,6 +257,23 @@ class AzurePlatform(PlatformProvider):
                 return f"{scheme}://{hostname}/{org}/", project
         return None, None
 
+    def _repo_azure_org(self, repo_name: str) -> str | None:
+        """Per-repo org from config (takes priority over workspace-level env var)."""
+        repo_cfg = self._ws.repos.get(repo_name)
+        if repo_cfg and repo_cfg.azure_org:
+            raw = repo_cfg.azure_org
+            if raw.startswith("http"):
+                return raw
+            return f"https://dev.azure.com/{raw}/"
+        return None
+
+    def _repo_azure_project(self, repo_name: str) -> str | None:
+        """Per-repo project from config (takes priority over workspace-level env var)."""
+        repo_cfg = self._ws.repos.get(repo_name)
+        if repo_cfg and repo_cfg.azure_project:
+            return repo_cfg.azure_project
+        return None
+
     def _azure_defaults_for_repo(
         self,
         repo_name: str,
@@ -263,8 +281,9 @@ class AzurePlatform(PlatformProvider):
         dry_run: bool = False,
         logger=None,
     ) -> tuple[str | None, str | None]:
-        org = self._azure_org()
-        project = self._azure_project()
+        # Priority: 1) per-repo config  2) workspace env vars  3) git remote URL
+        org = self._repo_azure_org(repo_name) or self._azure_org()
+        project = self._repo_azure_project(repo_name) or self._azure_project()
         if org and project:
             return org, project
         remote_url = get_remote_url(repo_name, self._ws, dry_run=dry_run, logger=logger)
@@ -456,7 +475,11 @@ class AzurePlatform(PlatformProvider):
         dry_run: bool = False,
         logger=None,
     ) -> PRResult:
-        cmd = self._build_pr_show_command(pr_id)
+        org: str | None = None
+        project: str | None = None
+        if repo_name:
+            org, project = self._azure_defaults_for_repo(repo_name, dry_run=dry_run, logger=logger)
+        cmd = self._build_pr_show_command(pr_id, org_url=org, project=project)
         result = run_command(cmd, dry_run=dry_run, logger=logger)
         payload = self._parse_pr_payload(result.stdout) or {}
         merge_status = payload.get("mergeStatus")
@@ -486,10 +509,13 @@ class AzurePlatform(PlatformProvider):
         logger=None,
     ) -> list[PRResult]:
         repo_dir = repo_path(self._ws, repo_name)
+        org, project = self._azure_defaults_for_repo(repo_name, dry_run=dry_run, logger=logger)
         cmd = self._build_pr_list_command(
             repo_name=repo_name,
             source_branch=source_branch,
             target_branch=target_branch,
+            org=org,
+            project=project,
         )
         result = run_command(cmd, cwd=repo_dir, dry_run=dry_run, logger=logger)
         payload = self._parse_pr_payload(result.stdout)

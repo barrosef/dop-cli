@@ -1,11 +1,11 @@
 import unittest
 
-from dop import devops
+from dop import cli
 
 
 class TestPrOps(unittest.TestCase):
     def test_format_teams_message_includes_conflict(self):
-        message = devops.format_teams_message(
+        message = cli.format_teams_message(
             "OG-101",
             "https://csptech.atlassian.net/browse/OG-101",
             [
@@ -22,7 +22,7 @@ class TestPrOps(unittest.TestCase):
         self.assertIn("Conflito: Sim", message)
 
     def test_format_teams_message_no_conflict(self):
-        message = devops.format_teams_message(
+        message = cli.format_teams_message(
             "OG-102",
             "https://csptech.atlassian.net/browse/OG-102",
             [

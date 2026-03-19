@@ -126,6 +126,24 @@ def _run_git_remote(
     run_command(cmd, cwd=repo_dir, env=env, dry_run=dry_run, logger=logger)
 
 
+def has_uncommitted_changes(
+    repo_name: str,
+    *,
+    workspace: WorkspaceConfig,
+    dry_run: bool = False,
+    logger=None,
+) -> bool:
+    """Check if repo has uncommitted changes (staged, unstaged, or untracked)."""
+    repo_dir = repo_path(workspace, repo_name)
+    result = run_command(
+        ["git", "status", "--porcelain"],
+        cwd=repo_dir,
+        dry_run=dry_run,
+        logger=logger,
+    )
+    return bool(result.stdout and result.stdout.strip())
+
+
 def commit_changes(
     repo_name: str,
     commit_message: str,
