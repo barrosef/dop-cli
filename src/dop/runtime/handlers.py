@@ -143,9 +143,9 @@ def handle_status(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=No
             state = match.get("State", "unknown")
             health = match.get("Health", "")
             status_str = state + (f" ({health})" if health else "")
-            print(f"  up   {app_name:<25} {status_str:<15} :{app_cfg.port}")
+            print(f"  ✔ {app_name:<25} {status_str:<15} :{app_cfg.port}")
         else:
-            print(f"  down {app_name:<25}")
+            print(f"  ✗ {app_name:<25} down")
 
     allure_match = next(
         (c for c in containers if c.get("Name") == "allure" or c.get("Service") == "allure"),
@@ -153,10 +153,10 @@ def handle_status(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=No
     )
     print("\nInfra:")
     if allure_match:
-        print(f"  up   allure                    {allure_match.get('State', 'up'):<15} :5050")
+        print(f"  ✔ allure                    {allure_match.get('State', 'up'):<15} :5050")
     else:
-        print(f"  down allure")
-    print(f"  down playwright-env            (on-demand)")
+        print(f"  ✗ allure                    down")
+    print(f"  ✗ playwright-env            (sob demanda)")
     return 0
 
 
