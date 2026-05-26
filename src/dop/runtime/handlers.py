@@ -235,7 +235,7 @@ def handle_e2e(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None)
         report_dir = reports_root / report_jira / suite
         report_dir.mkdir(parents=True, exist_ok=True)
         run_n = next_run_number(report_dir)
-        results_path = f"/app/projects/{report_jira}/{suite}/run-{run_n}/results"
+        results_path = f"/e2e/reports/{report_jira}/{suite}/run-{run_n}/results"
         pytest_args += [f"--alluredir={results_path}"]
 
         cmd = build_run_command(
