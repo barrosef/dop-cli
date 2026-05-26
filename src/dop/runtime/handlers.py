@@ -55,6 +55,31 @@ def _suite_base_url(suite: str, ws: WorkspaceConfig) -> str:
     return f"http://{service}:{port}"
 
 
+_FE_BUILD_COMMANDS = {
+    "optum-support-fe": ("repos/optum-support-fe", "npx vite build"),
+    "providers-front-end": ("repos/providers-front-end", "npx vue-cli-service build"),
+    "canal-empresa-fe": ("repos/Canal-empresa-fe", "npx vue-cli-service build"),
+}
+
+
+def _build_frontends(ws: WorkspaceConfig, requested: set[str], *, dry_run: bool = False, logger=None) -> None:
+    for app_name in sorted(requested):
+        if app_name not in _FE_BUILD_COMMANDS:
+            continue
+        repo_dir, build_cmd = _FE_BUILD_COMMANDS[app_name]
+        app_path = _ws_root(ws) / repo_dir
+        dist_path = app_path / "dist"
+        if not (app_path / "node_modules").is_dir():
+            print(f"  ⚠ {app_name}: node_modules missing, running npm install first...")
+            run_command(["npm", "install"], cwd=app_path, dry_run=dry_run, logger=logger)
+        print(f"  Building {app_name}...")
+        run_command(build_cmd.split(), cwd=app_path, dry_run=dry_run, logger=logger)
+        if not dry_run and dist_path.is_dir():
+            print(f"  ✔ {app_name}: built → {dist_path}")
+        elif not dry_run:
+            raise ValidationError(f"{app_name}: build succeeded but dist/ not found at {dist_path}")
+
+
 def _check_port_available(port: int) -> None:
     result = subprocess.run(
         ["lsof", "-i", f":{port}", "-t"],
@@ -76,6 +101,8 @@ def handle_start(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=Non
         _check_port_available(app.port)
         if app.debug_port:
             _check_port_available(app.debug_port)
+
+    _build_frontends(ws, requested, dry_run=dry_run, logger=logger)
 
     env = infer_urls(ws, requested)
     rt_file = _env_runtime_file(ws)
@@ -128,6 +155,19 @@ def handle_log(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None)
     os.execvp(cmd[0], cmd)
     # execvp replaces the process; this line is never reached
     return 0  # pragma: no cover
+
+
+def handle_rebuild(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None) -> int:
+    requested = expand_apps(ws, args.apps, no_deps=True)
+    fe_apps = {a for a in requested if a in _FE_BUILD_COMMANDS}
+    if not fe_apps:
+        raise ValidationError("No frontend apps to rebuild. Use: dop rebuild osf|pfe|cef")
+    _build_frontends(ws, fe_apps, dry_run=dry_run, logger=logger)
+    for app_name in sorted(fe_apps):
+        cmd = ["docker", "compose", "-f", str(_compose_file(ws)), "restart", app_name]
+        run_command(cmd, cwd=_ws_root(ws), dry_run=dry_run, logger=logger)
+    print(f"✔ Rebuilt and restarted: {', '.join(sorted(fe_apps))}")
+    return 0
 
 
 def handle_status(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None) -> int:

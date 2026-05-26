@@ -695,6 +695,7 @@ def build_parser() -> argparse.ArgumentParser:
         handle_log as _rt_log,
         handle_status as _rt_status,
         handle_restart as _rt_restart,
+        handle_rebuild as _rt_rebuild,
         handle_e2e as _rt_e2e,
         handle_codegen as _rt_codegen,
         handle_report as _rt_report,
@@ -721,6 +722,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_restart.add_argument("apps", nargs="+")
     p_restart.add_argument("--no-deps", action="store_true")
     p_restart.set_defaults(func=_make_rt_func(_rt_restart), command="restart")
+
+    p_rebuild = sub.add_parser("rebuild", help="Rebuild FE (npm build + restart nginx)")
+    p_rebuild.add_argument("apps", nargs="+", help="FE apps to rebuild (osf, pfe, cef)")
+    p_rebuild.set_defaults(func=_make_rt_func(_rt_rebuild), command="rebuild")
 
     p_status = sub.add_parser("status", help="Status dos containers")
     p_status.set_defaults(func=_make_rt_func(_rt_status), command="status")
