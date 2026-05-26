@@ -42,6 +42,19 @@ def _validate_env_file(ws: WorkspaceConfig) -> None:
         )
 
 
+
+_SUITE_TO_FE_SERVICE = {
+    "optum-support-fe": ("optum-support-fe", 5173),
+    "providers-front-end": ("providers-front-end", 5174),
+    "Canal-empresa-fe": ("canal-empresa-fe", 5175),
+}
+
+
+def _suite_base_url(suite: str, ws: WorkspaceConfig) -> str:
+    service, port = _SUITE_TO_FE_SERVICE.get(suite, (suite, 5173))
+    return f"http://{service}:{port}"
+
+
 def _check_port_available(port: int) -> None:
     result = subprocess.run(
         ["lsof", "-i", f":{port}", "-t"],
@@ -68,7 +81,8 @@ def handle_start(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=Non
     rt_file = _env_runtime_file(ws)
     write_env_runtime(rt_file, env)
 
-    service_names = sorted(requested)
+    _INFRA_SERVICES = ["mongodb", "allure"]
+    service_names = sorted(requested) + _INFRA_SERVICES
     cmd = build_up_command(
         compose_file=_compose_file(ws),
         env_files=[_env_file(ws), rt_file],
@@ -223,11 +237,12 @@ def handle_e2e(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None)
         pytest_args = []
         if pytest_filter:
             pytest_args += ["-k", pytest_filter]
+        suite_fe_url = _suite_base_url(suite, ws)
+        extra_env = {"E2E_BASE_URL": suite_fe_url}
         if headed:
             pytest_args.append("--headed")
-            extra_env = {"E2E_SHARED_CONTEXT": "1", "DISPLAY": os.environ.get("DISPLAY", ":0")}
-        else:
-            extra_env = {}
+            extra_env["E2E_SHARED_CONTEXT"] = "1"
+            extra_env["DISPLAY"] = os.environ.get("DISPLAY", ":0")
 
         pytest_args += extra_pytest
 
