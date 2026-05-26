@@ -4,7 +4,7 @@ import os
 import tomllib
 from pathlib import Path
 
-from .schema import WorkspaceConfig, RepoConfig, CredentialsConfig, PlatformConfig
+from .schema import WorkspaceConfig, RepoConfig, CredentialsConfig, PlatformConfig, RuntimeConfig, AppConfig, FeDependency
 
 CONFIG_DEFAULT_PATH = Path.home() / ".config" / "dop" / "config.toml"
 
@@ -38,6 +38,7 @@ def _parse_workspace(name: str, data: dict) -> WorkspaceConfig:
             primary=repo_data.get("primary", True),
             azure_org=repo_data.get("azure_org"),
             azure_project=repo_data.get("azure_project"),
+            long_branches=repo_data.get("long_branches"),
         )
 
     creds_data = data.get("credentials", {})
@@ -58,6 +59,42 @@ def _parse_workspace(name: str, data: dict) -> WorkspaceConfig:
     )
 
     pr_doc_suffix_map = data.get("pr_doc_suffix_map", {})
+    long_branches = data.get("long_branches", ["master", "main", "desenv", "hml", "OG-GLOBAL"])
+
+    rt_raw = data.get("runtime", {})
+    apps_raw = rt_raw.get("apps", {})
+    apps: dict[str, AppConfig] = {}
+    aliases: dict[str, str] = {}
+    for app_name, app_data in apps_raw.items():
+        app = AppConfig(
+            name=app_name,
+            repo=app_data["repo"],
+            kind=app_data["kind"],
+            port=app_data["port"],
+            debug_port=app_data.get("debug_port"),
+            aliases=app_data.get("aliases", []),
+            dev_cmd=app_data.get("dev_cmd"),
+            lifesupport_url_env=app_data.get("lifesupport_url_env"),
+        )
+        apps[app_name] = app
+        for alias in app.aliases:
+            aliases[alias] = app_name
+
+    fe_deps: list[FeDependency] = [
+        FeDependency(fe=dep["fe"], be=dep["be"])
+        for dep in rt_raw.get("fe_deps", [])
+    ]
+
+    runtime = RuntimeConfig(
+        compose_file=rt_raw.get("compose_file", "docker-compose.yml"),
+        env_file=rt_raw.get("env_file", "docker/.env"),
+        default_max_strikes=rt_raw.get("default_max_strikes", 3),
+        compose_timeout=rt_raw.get("compose_timeout", 300),
+        apps=apps,
+        fe_deps=fe_deps,
+        aliases=aliases,
+    )
+
     return WorkspaceConfig(
         name=name,
         root=data["root"],
@@ -71,4 +108,6 @@ def _parse_workspace(name: str, data: dict) -> WorkspaceConfig:
         repos=repos,
         pr_doc_prefix=data.get("pr_doc_prefix", "99-pr-00"),
         pr_doc_suffix_map=pr_doc_suffix_map,
+        long_branches=long_branches,
+        runtime=runtime,
     )
