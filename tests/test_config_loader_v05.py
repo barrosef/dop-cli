@@ -19,23 +19,23 @@ debug_port = 5005
 aliases = ["ls"]
 lifesupport_url_env = ""
 
-[workspaces.test.runtime.apps.optumsupport-be]
-repo = "optumsupport-be"
+[workspaces.test.runtime.apps.optum-support-be]
+repo = "optum-support-be"
 kind = "java"
 port = 8080
 debug_port = 5006
 aliases = ["osb"]
 lifesupport_url_env = "LIFESUPPORT_API_URL"
 
-[workspaces.test.runtime.apps.optumsupport-fe]
-repo = "optumsupport-fe"
+[workspaces.test.runtime.apps.optum-support-fe]
+repo = "optum-support-fe"
 kind = "vite"
 port = 5173
 aliases = ["osf"]
 
 [[workspaces.test.runtime.fe_deps]]
-fe = "optumsupport-fe"
-be = "optumsupport-be"
+fe = "optum-support-fe"
+be = "optum-support-be"
 """
 
 
@@ -49,10 +49,10 @@ def test_parse_runtime_section():
     assert "lifesupport-api" in ws.runtime.apps
     assert ws.runtime.apps["lifesupport-api"].port == 8082
     assert ws.runtime.apps["lifesupport-api"].aliases == ["ls"]
-    assert ws.runtime.apps["optumsupport-be"].lifesupport_url_env == "LIFESUPPORT_API_URL"
+    assert ws.runtime.apps["optum-support-be"].lifesupport_url_env == "LIFESUPPORT_API_URL"
     assert len(ws.runtime.fe_deps) == 1
-    assert ws.runtime.fe_deps[0].fe == "optumsupport-fe"
-    assert ws.runtime.aliases == {"ls": "lifesupport-api", "osb": "optumsupport-be", "osf": "optumsupport-fe"}
+    assert ws.runtime.fe_deps[0].fe == "optum-support-fe"
+    assert ws.runtime.aliases == {"ls": "lifesupport-api", "osb": "optum-support-be", "osf": "optum-support-fe"}
 
 
 def test_parse_without_runtime_section():

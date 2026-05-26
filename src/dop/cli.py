@@ -618,7 +618,7 @@ def build_parser() -> argparse.ArgumentParser:
     # demand-init
     p = sub.add_parser("demand-init", help="Inicializa demanda: registra repos impactados, atualiza branches longas, cria branches de trabalho")
     p.add_argument("jira_key")
-    p.add_argument("--repos", required=True, help="CSV de repos impactados (ex: lifesupport-api,optumsupport-be)")
+    p.add_argument("--repos", required=True, help="CSV de repos impactados (ex: lifesupport-api,optum-support-be)")
     p.add_argument("--linked", default=None, help="CSV de Jiras agrupadas (cria aliases)")
     p.add_argument("--branch", default=None, help="Nome da branch (default: <jira_key>)")
     p.set_defaults(func=handle_demand_init, command="demand-init")

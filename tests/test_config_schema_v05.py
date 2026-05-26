@@ -16,8 +16,8 @@ def test_app_config_defaults():
     assert app.lifesupport_url_env is None
 
 def test_fe_dependency():
-    dep = FeDependency(fe="optumsupport-fe", be="optumsupport-be")
-    assert dep.fe == "optumsupport-fe"
+    dep = FeDependency(fe="optum-support-fe", be="optum-support-be")
+    assert dep.fe == "optum-support-fe"
 
 def test_runtime_config_defaults():
     rc = RuntimeConfig()
