@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dop"
-version = "0.3.0"
-description = "DevOps Pipeline CLI - IA-First development workflow, multi-workspace, multi-platform"
+version = "0.5.0"
+description = "DevOps Pipeline CLI - IA-First unified tooling (git+PR, docker-compose runtime, e2e, reports)"
 requires-python = ">=3.11"
 dependencies = [
     "PyGithub>=2.0",
@@ -14,7 +14,6 @@ dependencies = [
 
 [project.scripts]
 dop = "dop.cli:main"
-dop-devops = "dop.devops:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
