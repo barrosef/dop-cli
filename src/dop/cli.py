@@ -695,6 +695,10 @@ def build_parser() -> argparse.ArgumentParser:
         handle_log as _rt_log,
         handle_status as _rt_status,
         handle_restart as _rt_restart,
+        handle_e2e as _rt_e2e,
+        handle_codegen as _rt_codegen,
+        handle_report as _rt_report,
+        handle_clean as _rt_clean,
     )
 
     def _make_rt_func(rt_handler):
@@ -730,6 +734,41 @@ def build_parser() -> argparse.ArgumentParser:
     p_log.add_argument("--tail", "-n", type=int, default=None)
     p_log.add_argument("--since", default=None)
     p_log.set_defaults(func=_make_rt_func(_rt_log), command="log")
+
+    # ── E2E ──
+    p_e2e = sub.add_parser("e2e", help="Run Playwright e2e tests")
+    p_e2e.add_argument("targets", nargs="*", help="Suite name, JIRA key, or file path")
+    p_e2e.add_argument("--headed", action="store_true", help="Visual mode (X11)")
+    p_e2e.add_argument("--max-strikes", type=int, default=None, dest="max_strikes", help="Max consecutive reds (1-10)")
+    p_e2e.add_argument("--reset-strikes", action="store_true")
+    p_e2e.add_argument("-k", dest="k", default=None, help="pytest -k filter")
+    p_e2e.set_defaults(func=_make_rt_func(_rt_e2e), command="e2e")
+
+    # ── Codegen ──
+    p_codegen = sub.add_parser("codegen", help="Playwright codegen recording")
+    p_codegen.add_argument("suite", help="Suite name")
+    p_codegen.add_argument("--url", default=None, help="Start URL")
+    p_codegen.add_argument("--out", default=None, help="Output file path")
+    p_codegen.set_defaults(func=_make_rt_func(_rt_codegen), command="codegen")
+
+    # ── Report ──
+    p_report = sub.add_parser("report", help="Allure report management")
+    report_subs = p_report.add_subparsers(dest="report_action")
+    report_subs.add_parser("serve", help="Ensure allure is running")
+    p_report_open = report_subs.add_parser("open", help="Open report in browser")
+    p_report_open.add_argument("suite", nargs="?")
+    p_report_open.add_argument("jira", nargs="?")
+    p_report_clean = report_subs.add_parser("clean", help="Clean old runs")
+    p_report_clean.add_argument("--keep", type=int, default=5)
+    p_report.set_defaults(func=_make_rt_func(_rt_report), command="report")
+
+    # ── Clean ──
+    p_clean = sub.add_parser("clean", help="Remove Docker volumes/caches")
+    p_clean.add_argument("--m2", action="store_true", help="Maven cache")
+    p_clean.add_argument("--node-modules", action="store_true", dest="node_modules", help="node_modules volumes")
+    p_clean.add_argument("--allure", action="store_true", help="Allure data")
+    p_clean.add_argument("--all", action="store_true", dest="all", help="Everything")
+    p_clean.set_defaults(func=_make_rt_func(_rt_clean), command="clean")
 
     return parser
 

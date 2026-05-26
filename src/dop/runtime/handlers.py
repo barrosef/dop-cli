@@ -164,3 +164,200 @@ def handle_restart(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=N
     handle_stop(ws, args, dry_run=dry_run, logger=logger)
     handle_start(ws, args, dry_run=dry_run, logger=logger)
     return 0
+
+
+def handle_e2e(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None) -> int:
+    from .e2e import resolve_e2e_target, find_suites_for_jira, next_run_number, E2E_SUITE_ORDER
+    from .compose import build_run_command
+    from ..core.errors import ProcessError
+
+    e2e_root = _ws_root(ws) / "e2e"
+    reports_root = e2e_root / "reports"
+    known_suites = [d.name for d in e2e_root.iterdir()
+                    if d.is_dir() and (d / "tests").is_dir()]
+
+    targets = getattr(args, "targets", []) or []
+    if not targets:
+        raise ValidationError("No e2e target specified. Use: dop e2e <suite|JIRA|file>")
+
+    jira_key = None
+    suites_to_run = []
+    pytest_filter = getattr(args, "k", None)
+    extra_pytest = getattr(args, "extra", []) or []
+
+    for token in targets:
+        resolved = resolve_e2e_target(token, known_suites=known_suites)
+        if resolved["kind"] == "suite":
+            suites_to_run.extend(resolved["suites"])
+        elif resolved["kind"] == "jira":
+            jira_key = token.upper()
+            jira_filter = resolved["filter"]
+            found = find_suites_for_jira(jira_filter, e2e_root=e2e_root, suites=known_suites)
+            if not found:
+                raise ValidationError(f"No tests found for {jira_key} in suites: {', '.join(known_suites)}")
+            suites_to_run.extend(found)
+            if not pytest_filter:
+                pytest_filter = jira_filter
+        elif resolved["kind"] == "file":
+            extra_pytest.append(resolved.get("path", token))
+
+    # Deduplicate, preserve E2E_SUITE_ORDER
+    seen = set()
+    ordered = []
+    for s in E2E_SUITE_ORDER:
+        if s in suites_to_run and s not in seen:
+            ordered.append(s)
+            seen.add(s)
+    for s in suites_to_run:
+        if s not in seen:
+            ordered.append(s)
+            seen.add(s)
+
+    max_strikes = getattr(args, "max_strikes", None) or ws.runtime.default_max_strikes
+    max_strikes = max(1, min(10, max_strikes))
+
+    headed = getattr(args, "headed", False)
+    all_green = True
+    run_n = 1
+    for suite in ordered:
+        pytest_args = []
+        if pytest_filter:
+            pytest_args += ["-k", pytest_filter]
+        if headed:
+            pytest_args.append("--headed")
+            extra_env = {"E2E_SHARED_CONTEXT": "1", "DISPLAY": os.environ.get("DISPLAY", ":0")}
+        else:
+            extra_env = {}
+
+        pytest_args += extra_pytest
+
+        report_jira = jira_key or "manual"
+        report_dir = reports_root / report_jira / suite
+        report_dir.mkdir(parents=True, exist_ok=True)
+        run_n = next_run_number(report_dir)
+        results_path = f"/app/projects/{report_jira}/{suite}/run-{run_n}/results"
+        pytest_args += [f"--alluredir={results_path}"]
+
+        cmd = build_run_command(
+            compose_file=_compose_file(ws),
+            env_files=[_env_file(ws)],
+            service="playwright-env",
+            args=[f"/e2e/{suite}"] + pytest_args,
+            profile="e2e",
+            extra_env=extra_env,
+        )
+
+        if logger:
+            logger.info(f"E2E suite: {suite} (run-{run_n})")
+
+        try:
+            run_command(cmd, cwd=_ws_root(ws), dry_run=dry_run, logger=logger)
+            print(f"  ✔ {suite}: green (run-{run_n})")
+        except Exception:
+            print(f"  ✘ {suite}: red (run-{run_n})")
+            all_green = False
+
+    status = "green" if all_green else "red"
+    print(f"\nResult: {status}")
+    if jira_key and ordered:
+        report_jira = jira_key
+        print(f"Report: http://localhost:5050/projects/{report_jira}/{ordered[-1]}/run-{run_n}")
+    return 0 if all_green else 1
+
+
+def handle_codegen(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None) -> int:
+    from .compose import build_run_command
+    from ..core.state import now_iso
+
+    suite = args.suite
+    url = getattr(args, "url", None) or "http://localhost:5173"
+    out = getattr(args, "out", None) or f"tests/recordings/recording_{now_iso()[:10]}.py"
+
+    cmd = build_run_command(
+        compose_file=_compose_file(ws),
+        service="playwright-env",
+        args=["playwright", "codegen", url, "-o", f"/e2e/{suite}/{out}"],
+        profile="e2e",
+        extra_env={"DISPLAY": os.environ.get("DISPLAY", ":0")},
+    )
+    print(f"Starting codegen for suite '{suite}' → {url}")
+    os.execvp(cmd[0], cmd)
+    return 0  # pragma: no cover
+
+
+def handle_report(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None) -> int:
+    from .compose import build_up_command
+
+    action = getattr(args, "report_action", None)
+    if not action:
+        raise ValidationError("Use: dop report serve|open|clean")
+
+    if action == "serve":
+        cmd = build_up_command(
+            compose_file=_compose_file(ws),
+            env_files=[_env_file(ws)],
+            services=["allure"],
+            wait=True,
+        )
+        run_command(cmd, cwd=_ws_root(ws), dry_run=dry_run, logger=logger)
+        print("✔ Allure serving at http://localhost:5050")
+        return 0
+
+    if action == "open":
+        import webbrowser
+        suite = getattr(args, "suite", None) or ""
+        jira = getattr(args, "jira", None) or ""
+        url = f"http://localhost:5050/projects/{jira}/{suite}" if jira else "http://localhost:5050"
+        webbrowser.open(url)
+        return 0
+
+    if action == "clean":
+        import shutil
+        keep = getattr(args, "keep", 5)
+        reports_root = _ws_root(ws) / "e2e" / "reports"
+        cleaned = 0
+        if reports_root.is_dir():
+            for jira_dir in reports_root.iterdir():
+                if not jira_dir.is_dir() or jira_dir.name.startswith(("_", ".")):
+                    continue
+                for suite_dir in jira_dir.iterdir():
+                    if not suite_dir.is_dir():
+                        continue
+                    runs = sorted(
+                        [d for d in suite_dir.iterdir()
+                         if d.is_dir() and d.name.startswith("run-") and d.name.split("-")[1].isdigit()],
+                        key=lambda d: int(d.name.split("-")[1]),
+                    )
+                    to_remove = runs[:-keep] if len(runs) > keep else []
+                    for r in to_remove:
+                        if not dry_run:
+                            shutil.rmtree(r)
+                        cleaned += 1
+        print(f"✔ Cleaned {cleaned} old runs (keeping last {keep} per suite)")
+        return 0
+
+    return 1
+
+
+def handle_clean(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None) -> int:
+    targets = []
+    if getattr(args, "m2", False) or getattr(args, "all", False):
+        targets.append("m2-cache")
+    if getattr(args, "node_modules", False) or getattr(args, "all", False):
+        targets += ["optum-fe-node_modules", "providers-fe-node_modules", "canal-fe-node_modules"]
+    if getattr(args, "allure", False) or getattr(args, "all", False):
+        targets += ["allure-results", "allure-reports"]
+    if getattr(args, "all", False):
+        targets += ["lifesupport-target", "optum-be-target", "providers-be-target", "canal-be-target"]
+
+    if not targets:
+        raise ValidationError("Specify --m2, --node-modules, --allure, or --all")
+
+    for vol in targets:
+        cmd = ["docker", "volume", "rm", "-f", f"optum-dev_{vol}"]
+        if not dry_run:
+            subprocess.run(cmd, capture_output=True)
+        print(f"  Removed volume: {vol}")
+
+    print(f"✔ Cleaned {len(targets)} volumes")
+    return 0
