@@ -8,9 +8,9 @@ from ..core.errors import ValidationError
 # Maps canonical BE app name → (inject_env_var, azure_fallback_env_var, local_port)
 _BE_URL_MAP: dict[str, tuple[str, str, int]] = {
     "lifesupport-api": ("LIFESUPPORT_URL", "AZURE_LIFESUPPORT_URL", 8082),
-    "optumsupport-be": ("OPTUM_SUPPORT_BE_URL", "AZURE_OPTUM_SUPPORT_BE_URL", 8080),
+    "optum-support-be": ("OPTUM_SUPPORT_BE_URL", "AZURE_OPTUM_SUPPORT_BE_URL", 8080),
     "providers-back-end": ("PROVIDERS_BE_URL", "AZURE_PROVIDERS_BE_URL", 8083),
-    "Canal-empresa-be": ("CANAL_EMPRESA_BE_URL", "AZURE_CANAL_EMPRESA_BE_URL", 8084),
+    "canal-empresa-be": ("CANAL_EMPRESA_BE_URL", "AZURE_CANAL_EMPRESA_BE_URL", 8084),
 }
 
 
