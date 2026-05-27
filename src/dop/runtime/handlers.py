@@ -43,16 +43,27 @@ def _validate_env_file(ws: WorkspaceConfig) -> None:
 
 
 
-_SUITE_TO_FE_SERVICE = {
-    "optum-support-fe": ("optum-support-fe", 5173),
-    "providers-front-end": ("providers-front-end", 5174),
-    "Canal-empresa-fe": ("canal-empresa-fe", 5175),
+_SUITE_FE_PORT = {
+    "optum-support-fe": 5173,
+    "providers-front-end": 5174,
+    "Canal-empresa-fe": 5175,
+}
+
+_SUITE_BE_PORT = {
+    "optum-support-fe": 8080,
+    "providers-front-end": 8083,
+    "Canal-empresa-fe": 8084,
 }
 
 
 def _suite_base_url(suite: str, ws: WorkspaceConfig) -> str:
-    service, port = _SUITE_TO_FE_SERVICE.get(suite, (suite, 5173))
-    return f"http://{service}:{port}"
+    port = _SUITE_FE_PORT.get(suite, 5173)
+    return f"http://localhost:{port}"
+
+
+def _suite_api_url(suite: str) -> str:
+    port = _SUITE_BE_PORT.get(suite, 8080)
+    return f"http://localhost:{port}"
 
 
 _FE_BUILD_COMMANDS = {
@@ -278,7 +289,8 @@ def handle_e2e(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None)
         if pytest_filter:
             pytest_args += ["-k", pytest_filter]
         suite_fe_url = _suite_base_url(suite, ws)
-        extra_env = {"E2E_BASE_URL": suite_fe_url}
+        suite_api = _suite_api_url(suite)
+        extra_env = {"E2E_BASE_URL": suite_fe_url, "E2E_API_URL": suite_api}
         if headed:
             pytest_args.append("--headed")
             extra_env["E2E_SHARED_CONTEXT"] = "1"
