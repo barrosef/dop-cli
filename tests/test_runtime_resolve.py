@@ -1,61 +1,57 @@
-from dop.config.schema import (
-    WorkspaceConfig, RuntimeConfig, AppConfig, FeDependency,
-)
+import pytest
+from dop.config.schema import WorkspaceConfig, RuntimeConfig, AppConfig
 from dop.runtime.resolve import expand_apps, infer_urls
+
 
 def _ws() -> WorkspaceConfig:
     apps = {
         "lifesupport-api": AppConfig(
-            name="lifesupport-api", repo="lifesupport-api", kind="java",
+            name="lifesupport-api", service="lifesupport-api", role="backend",
             port=8082, debug_port=5005, aliases=["ls"],
+            url_env="LIFESUPPORT_URL", fallback_url_env="AZURE_LIFESUPPORT_URL",
         ),
         "optum-support-be": AppConfig(
-            name="optum-support-be", repo="optum-support-be", kind="java",
+            name="optum-support-be", service="optum-support-be", role="backend",
             port=8080, debug_port=5006, aliases=["osb"],
-            lifesupport_url_env="LIFESUPPORT_API_URL",
+            url_env="OPTUM_SUPPORT_BE_URL", fallback_url_env="AZURE_OPTUM_SUPPORT_BE_URL",
         ),
         "optum-support-fe": AppConfig(
-            name="optum-support-fe", repo="optum-support-fe", kind="vite",
-            port=5173, aliases=["osf"],
+            name="optum-support-fe", service="optum-support-fe", role="frontend",
+            port=5173, aliases=["osf"], depends_on=["optum-support-be"],
+            e2e_suite="optum-support-fe",
         ),
     }
-    fe_deps = [FeDependency(fe="optum-support-fe", be="optum-support-be")]
     aliases = {"ls": "lifesupport-api", "osb": "optum-support-be", "osf": "optum-support-fe"}
-    runtime = RuntimeConfig(apps=apps, fe_deps=fe_deps, aliases=aliases)
+    runtime = RuntimeConfig(apps=apps, aliases=aliases)
     return WorkspaceConfig(name="test", root="/tmp/test", runtime=runtime)
 
+
 def test_expand_aliases():
-    ws = _ws()
-    result = expand_apps(ws, ["osf", "osb"])
-    assert result == {"optum-support-fe", "optum-support-be"}
+    assert expand_apps(_ws(), ["osf", "osb"]) == {"optum-support-fe", "optum-support-be"}
+
 
 def test_expand_auto_deps():
-    ws = _ws()
-    result = expand_apps(ws, ["osf"])
-    assert "optum-support-be" in result
-    assert "optum-support-fe" in result
+    result = expand_apps(_ws(), ["osf"])
+    assert result == {"optum-support-fe", "optum-support-be"}
+
 
 def test_expand_no_deps():
-    ws = _ws()
-    result = expand_apps(ws, ["osf"], no_deps=True)
-    assert result == {"optum-support-fe"}
+    assert expand_apps(_ws(), ["osf"], no_deps=True) == {"optum-support-fe"}
 
-def test_infer_urls_local_lifesupport(monkeypatch):
+
+def test_infer_urls_local(monkeypatch):
     monkeypatch.setenv("AZURE_LIFESUPPORT_URL", "https://azure.example.com")
-    ws = _ws()
-    requested = {"lifesupport-api", "optum-support-be"}
-    env = infer_urls(ws, requested)
+    env = infer_urls(_ws(), {"lifesupport-api", "optum-support-be"})
     assert env["LIFESUPPORT_URL"] == "http://lifesupport-api:8082"
+    assert env["OPTUM_SUPPORT_BE_URL"] == "http://optum-support-be:8080"
 
-def test_infer_urls_remote_lifesupport(monkeypatch):
+
+def test_infer_urls_fallback(monkeypatch):
     monkeypatch.setenv("AZURE_LIFESUPPORT_URL", "https://azure.example.com")
-    ws = _ws()
-    requested = {"optum-support-be"}
-    env = infer_urls(ws, requested)
+    env = infer_urls(_ws(), {"optum-support-be"})
     assert env["LIFESUPPORT_URL"] == "https://azure.example.com"
 
+
 def test_expand_unknown_app_raises():
-    ws = _ws()
-    import pytest
     with pytest.raises(Exception):
-        expand_apps(ws, ["unknown-app"])
+        expand_apps(_ws(), ["unknown-app"])
