@@ -326,10 +326,43 @@ def handle_e2e(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None)
 
     status = "green" if all_green else "red"
     print(f"\nResult: {status}")
-    if jira_key and ordered:
-        report_jira = jira_key
-        print(f"Report: http://localhost:5050/projects/{report_jira}/{ordered[-1]}/run-{run_n}")
+
+    _generate_allure3_reports(e2e_root, suites=ordered, dry_run=dry_run)
+
     return 0 if all_green else 1
+
+
+def _generate_allure3_reports(e2e_root: Path, *, suites: list,
+                              dry_run: bool = False) -> None:
+    """Regenerate Allure 3 reports for each suite after tests complete."""
+    import shutil
+
+    reports_root = e2e_root / "reports"
+    for suite in suites:
+        suite_dir = e2e_root / suite
+        results_dir = suite_dir / ".allure-results"
+        report_dir = reports_root / suite
+        config_file = suite_dir / "allurerc.yml"
+
+        if not results_dir.is_dir():
+            continue
+
+        if dry_run:
+            print(f"  [dry-run] Would regenerate Allure report for {suite}")
+            continue
+
+        try:
+            if report_dir.is_dir():
+                shutil.rmtree(report_dir)
+            cmd = ["allure", "generate", ".allure-results",
+                   "--output", str(report_dir),
+                   "--report-name", suite]
+            if config_file.is_file():
+                cmd += ["--config", "allurerc.yml"]
+            run_command(cmd, cwd=suite_dir)
+            print(f"  Allure: http://localhost:5252/{suite}/index.html")
+        except Exception as e:
+            print(f"  ⚠ Allure generate failed for {suite}: {e}")
 
 
 def handle_codegen(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None) -> int:

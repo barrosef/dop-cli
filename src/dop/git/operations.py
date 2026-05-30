@@ -7,7 +7,6 @@ from pathlib import Path
 from ..config.schema import WorkspaceConfig
 from ..core.errors import ProcessError, ValidationError
 from ..core.process import run_command
-from ..core.state import require_stage
 from .auth.base import GitAuthProvider
 
 
@@ -148,12 +147,10 @@ def commit_changes(
     repo_name: str,
     commit_message: str,
     *,
-    state: dict,
     workspace: WorkspaceConfig,
     dry_run: bool = False,
     logger=None,
 ) -> None:
-    require_stage(state, "change_approved")
     repo_dir = repo_path(workspace, repo_name)
     run_command(["git", "add", "-A"], cwd=repo_dir, dry_run=dry_run, logger=logger)
     run_command(
@@ -168,13 +165,11 @@ def push_branch(
     repo_name: str,
     branch_name: str,
     *,
-    state: dict,
     workspace: WorkspaceConfig,
     auth: GitAuthProvider,
     dry_run: bool = False,
     logger=None,
 ) -> None:
-    require_stage(state, "change_approved")
     repo_dir = repo_path(workspace, repo_name)
     _run_git_remote(
         ["push", "-u", "origin", branch_name],
@@ -199,6 +194,64 @@ def pull_branch(
     if branch_name:
         args.extend(["origin", branch_name])
     _run_git_remote(args, repo_dir=repo_dir, auth=auth, dry_run=dry_run, logger=logger)
+
+
+def remote_branch_exists(
+    repo_name: str,
+    branch_name: str,
+    *,
+    workspace: WorkspaceConfig,
+    auth: GitAuthProvider,
+    dry_run: bool = False,
+    logger=None,
+) -> bool:
+    """Verifica se a branch existe em origin via ls-remote (sem network local)."""
+    repo_dir = repo_path(workspace, repo_name)
+    if dry_run:
+        return True
+    try:
+        prefix = auth.git_command_prefix()
+        env = auth.git_env()
+        result = run_command(
+            [*prefix, "ls-remote", "--heads", "origin", branch_name],
+            cwd=repo_dir,
+            env=env,
+            dry_run=False,
+            logger=logger,
+        )
+        return bool(result.stdout and result.stdout.strip())
+    except ProcessError:
+        return False
+
+
+def pull_branch_if_exists(
+    repo_name: str,
+    branch_name: str,
+    *,
+    workspace: WorkspaceConfig,
+    auth: GitAuthProvider,
+    dry_run: bool = False,
+    logger=None,
+) -> bool:
+    """Faz checkout + pull --ff-only de branch_name se existir no remote. Retorna True se atualizou."""
+    if not remote_branch_exists(
+        repo_name, branch_name,
+        workspace=workspace, auth=auth, dry_run=dry_run, logger=logger,
+    ):
+        if logger:
+            logger.info(f"  {repo_name}: branch '{branch_name}' não existe no remote — skip.")
+        return False
+    try:
+        checkout_branch(repo_name, branch_name, workspace=workspace, dry_run=dry_run, logger=logger)
+    except ProcessError:
+        # Branch só existe no remote; cria local rastreando origin/<branch>.
+        repo_dir = repo_path(workspace, repo_name)
+        run_command(
+            ["git", "checkout", "-B", branch_name, f"origin/{branch_name}"],
+            cwd=repo_dir, dry_run=dry_run, logger=logger,
+        )
+    pull_branch(repo_name, branch_name, workspace=workspace, auth=auth, dry_run=dry_run, logger=logger)
+    return True
 
 
 def fetch_origin(
@@ -311,14 +364,12 @@ def force_push_branch(
     repo_name: str,
     branch_name: str,
     *,
-    state: dict,
     workspace: WorkspaceConfig,
     auth: GitAuthProvider,
     dry_run: bool = False,
     logger=None,
 ) -> None:
     """Push with --force-with-lease (post-rebase of feature branch)."""
-    require_stage(state, "change_approved")
     repo_dir = repo_path(workspace, repo_name)
     _run_git_remote(
         ["push", "--force-with-lease", "origin", branch_name],

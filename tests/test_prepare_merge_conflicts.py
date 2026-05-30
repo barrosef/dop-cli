@@ -85,7 +85,7 @@ class TestPrepareMergeConflicts(unittest.TestCase):
         result = cli.handle_prepare_merge_conflicts(_make_args(repo="repo-a"), logger, ws, auth)
 
         self.assertEqual(result, 0)
-        logger.warn.assert_any_call("Conflitos detectados em repo-a. Arquivos em conflito:")
+        logger.warn.assert_any_call("Conflitos em repo-a:")
         logger.warn.assert_any_call("  src/main.java")
         logger.warn.assert_any_call("  src/config.xml")
 

@@ -33,7 +33,7 @@ def _make_workspace(repos=None):
 
 class TestFinishMergeConflicts(unittest.TestCase):
     @patch("dop.cli.build_platform_provider")
-    @patch("dop.cli.push_branch_simple")
+    @patch("dop.cli.push_branch")
     @patch("dop.cli.log_diff")
     @patch("dop.cli.has_pending_merge")
     @patch("dop.cli.current_branch")
@@ -103,7 +103,7 @@ class TestFinishMergeConflicts(unittest.TestCase):
         self.assertIn("Nenhum commit", str(ctx.exception))
 
     @patch("dop.cli.build_platform_provider")
-    @patch("dop.cli.push_branch_simple")
+    @patch("dop.cli.push_branch")
     @patch("dop.cli.log_diff")
     @patch("dop.cli.has_pending_merge")
     @patch("dop.cli.current_branch")
@@ -138,7 +138,7 @@ class TestFinishMergeConflicts(unittest.TestCase):
         platform.create_pr.assert_not_called()
 
     @patch("dop.cli.build_platform_provider")
-    @patch("dop.cli.push_branch_simple")
+    @patch("dop.cli.push_branch")
     @patch("dop.cli.log_diff")
     @patch("dop.cli.has_pending_merge")
     @patch("dop.cli.current_branch")
