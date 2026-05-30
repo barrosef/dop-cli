@@ -33,32 +33,53 @@ class PlatformConfig:
 
 
 @dataclass
-class AppConfig:
-    name: str
-    repo: str
-    kind: str               # "java" | "vite" | "vue-cli"
-    port: int
-    debug_port: int | None = None
-    aliases: list[str] = field(default_factory=list)
-    dev_cmd: str | None = None
-    lifesupport_url_env: str | None = None
+class AppBuildConfig:
+    """Build de front-end no host (nginx serve o artefato)."""
+    dir: str
+    command: str
+    artifact: str = "dist"
 
 
 @dataclass
-class FeDependency:
-    fe: str
-    be: str
+class AppConfig:
+    """App lógico mapeado para um serviço do orquestrador."""
+    name: str
+    service: str               # nome do serviço no docker-compose.yml
+    role: str                  # "frontend" | "backend"
+    port: int
+    aliases: list[str] = field(default_factory=list)
+    depends_on: list[str] = field(default_factory=list)
+    url_env: str | None = None          # env var onde injetar a URL deste app (BE)
+    fallback_url_env: str | None = None  # env var de fallback (Azure) quando fora do ar
+    e2e_suite: str | None = None        # diretório da suite em e2e/ (FE)
+    build: AppBuildConfig | None = None
+    debug_port: int | None = None
+
+
+@dataclass
+class EphemeralRunnerConfig:
+    """Serviço usado para execuções efêmeras (e2e/codegen)."""
+    service: str
+    profile: str | None = None
+
+
+@dataclass
+class DockerComposeConfig:
+    compose_file: str = "docker-compose.yml"
+    env_files: list[str] = field(default_factory=lambda: ["docker/.env"])
+    project_name: str = ""              # prefixo de volume (docker compose project)
+    ephemeral_runner: EphemeralRunnerConfig | None = None
+    clean: dict[str, list[str]] = field(default_factory=dict)  # categoria -> volumes
 
 
 @dataclass
 class RuntimeConfig:
-    compose_file: str = "docker-compose.yml"
-    env_file: str = "docker/.env"
+    orchestrator: str = "docker_compose"
+    infra: list[str] = field(default_factory=list)
     default_max_strikes: int = 3
-    compose_timeout: int = 300
     apps: dict[str, AppConfig] = field(default_factory=dict)
-    fe_deps: list[FeDependency] = field(default_factory=list)
-    aliases: dict[str, str] = field(default_factory=dict)
+    aliases: dict[str, str] = field(default_factory=dict)  # derivado de apps[*].aliases
+    docker_compose: DockerComposeConfig | None = None
 
 
 @dataclass
