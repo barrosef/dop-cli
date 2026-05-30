@@ -4,7 +4,11 @@ import os
 import tomllib
 from pathlib import Path
 
-from .schema import WorkspaceConfig, RepoConfig, CredentialsConfig, PlatformConfig, RuntimeConfig, AppConfig, FeDependency
+from .schema import (
+    WorkspaceConfig, RepoConfig, CredentialsConfig, PlatformConfig,
+    RuntimeConfig, AppConfig, AppBuildConfig,
+    DockerComposeConfig, EphemeralRunnerConfig,
+)
 
 CONFIG_DEFAULT_PATH = Path.home() / ".config" / "dop" / "config.toml"
 
@@ -66,33 +70,56 @@ def _parse_workspace(name: str, data: dict) -> WorkspaceConfig:
     apps: dict[str, AppConfig] = {}
     aliases: dict[str, str] = {}
     for app_name, app_data in apps_raw.items():
+        build_raw = app_data.get("build")
+        build = None
+        if build_raw is not None:
+            build = AppBuildConfig(
+                dir=build_raw["dir"],
+                command=build_raw["command"],
+                artifact=build_raw.get("artifact", "dist"),
+            )
         app = AppConfig(
             name=app_name,
-            repo=app_data["repo"],
-            kind=app_data["kind"],
+            service=app_data["service"],
+            role=app_data["role"],
             port=app_data["port"],
-            debug_port=app_data.get("debug_port"),
             aliases=app_data.get("aliases", []),
-            dev_cmd=app_data.get("dev_cmd"),
-            lifesupport_url_env=app_data.get("lifesupport_url_env"),
+            depends_on=app_data.get("depends_on", []),
+            url_env=app_data.get("url_env"),
+            fallback_url_env=app_data.get("fallback_url_env"),
+            e2e_suite=app_data.get("e2e_suite"),
+            build=build,
+            debug_port=app_data.get("debug_port"),
         )
         apps[app_name] = app
         for alias in app.aliases:
             aliases[alias] = app_name
 
-    fe_deps: list[FeDependency] = [
-        FeDependency(fe=dep["fe"], be=dep["be"])
-        for dep in rt_raw.get("fe_deps", [])
-    ]
+    dc_raw = rt_raw.get("docker_compose")
+    docker_compose = None
+    if dc_raw is not None:
+        runner_raw = dc_raw.get("ephemeral_runner")
+        ephemeral_runner = None
+        if runner_raw is not None:
+            ephemeral_runner = EphemeralRunnerConfig(
+                service=runner_raw["service"],
+                profile=runner_raw.get("profile"),
+            )
+        docker_compose = DockerComposeConfig(
+            compose_file=dc_raw.get("compose_file", "docker-compose.yml"),
+            env_files=dc_raw.get("env_files", ["docker/.env"]),
+            project_name=dc_raw.get("project_name", ""),
+            ephemeral_runner=ephemeral_runner,
+            clean=dc_raw.get("clean", {}),
+        )
 
     runtime = RuntimeConfig(
-        compose_file=rt_raw.get("compose_file", "docker-compose.yml"),
-        env_file=rt_raw.get("env_file", "docker/.env"),
+        orchestrator=rt_raw.get("orchestrator", "docker_compose"),
+        infra=rt_raw.get("infra", []),
         default_max_strikes=rt_raw.get("default_max_strikes", 3),
-        compose_timeout=rt_raw.get("compose_timeout", 300),
         apps=apps,
-        fe_deps=fe_deps,
         aliases=aliases,
+        docker_compose=docker_compose,
     )
 
     return WorkspaceConfig(
