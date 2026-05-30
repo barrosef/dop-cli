@@ -77,14 +77,23 @@ Dev acompanhando e guiando por cima."*
 
 ### Cadeia de interação
 ```
-Dev ──▶ Frontend ──▶ API ──▶ CLI ──▶ (git / azure / jira / docker)
-                      │                         ▲
-                      └──▶ Claude (chat/agente) ┘
+Dev ──▶ Frontend ───────────────▶ API-DOP ──▶ workspace + ferramentas
+                                   ▲   │          (git / azure / jira / docker, estado)
+                                   │   └──▶ Claude (agente) ◀──▶ Dev  (chat)
+                                   │                 │
+                                   └──── CLI ◀───────┘
+                          (Claude roda `dop ...`; a CLI só repassa para a API)
 ```
-- O Dev interage com o **Frontend**, que chama a **API**, que aciona a **CLI** (e/ou
-  o Claude), que por sua vez interage com serviços externos.
-- O Claude participa via **chat** (config de workspace e desenvolvimento) e como
-  **operador** das ações do DOP.
+- A **API é o núcleo/motor**: contém a lógica de negócio (que hoje vive na CLI),
+  **acessa a workspace e as ferramentas** (git/azure/jira/docker) e **detém o estado**.
+  É a **única fonte de verdade**.
+- Há **duas portas de entrada para a API**: o **Frontend** (usado pelo Dev) e a
+  **CLI** (usada pelo Claude).
+- A **CLI virou cliente fino da API**: o Claude continua rodando `dop ...` como hoje,
+  mas a CLI **não acessa a workspace diretamente** — ela traduz comandos em chamadas
+  à API. Faz tudo o que faz hoje, porém **via API**.
+- O **Claude** é hospedado/dirigido pela API, **conversa com o Dev** (chat) e
+  **opera o DOP** acionando a CLI (→ API).
 
 ### Divisão de responsabilidades (deste 1.0)
 | Domínio | Responsável | Observação |
@@ -101,13 +110,23 @@ Dev ──▶ Frontend ──▶ API ──▶ CLI ──▶ (git / azure / jira
 > (stack, in-process × subprocess, persistência, mecanismo de chat com o Claude)
 > estão em aberto em [§10](#10-decisões-técnicas-em-aberto-a-cargo-do-claude).
 
-- **Componente 1 — CLI:** o motor atual. Continua executável isoladamente pelo Dev.
-- **Componente 2 — API:** expõe as operações do DOP via HTTP; orquestra CLI e Claude;
-  mantém estado de workspaces e demandas; faz o polling de PRs.
+- **Componente 1 — API (núcleo/motor):** contém a lógica de negócio (hoje na CLI),
+  **acessa a workspace e as ferramentas** (git/azure/jira/docker), **mantém o estado**
+  de workspaces/demandas, hospeda/dirige o **Claude** e faz o **polling de PRs**.
+  **Única fonte de verdade.**
+- **Componente 2 — CLI (cliente fino da API):** porta de entrada usada pelo **Claude**
+  (continua rodando `dop ...` como hoje). **Não acessa a workspace diretamente** —
+  repassa tudo para a API. Mantida ergonômica para uso ocasional do Dev.
 - **Componente 3 — Frontend:** SPA onde o Dev navega (tela inicial, wizard de
-  workspace, menu de desenvolvimento, lista de tasks, painel da demanda, chat).
-- **Claude:** acionado pela API como colaborador/operador, tanto na configuração
-  quanto no desenvolvimento.
+  workspace, menu de desenvolvimento, lista de tasks, painel da demanda, chat). Porta
+  de entrada usada pelo **Dev**.
+- **Claude:** acionado pela API como colaborador/operador; **conversa com o Dev** e
+  **opera o DOP via CLI → API**, tanto na configuração quanto no desenvolvimento.
+
+> **Consequência estrutural (a cargo do Claude/impl):** a lógica que hoje reside no
+> pacote da CLI (`git/`, `platform/`, `runtime/`, `core/state`) **migra para um núcleo
+> consumido pela API**; a CLI é reescrita como cliente HTTP fino. É a maior mudança de
+> estrutura do projeto no 1.0.
 
 **Princípios herdados (mantidos como requisito):**
 - Estado auditável (hoje `.state.json`); operações idempotentes; `--dry-run`;
@@ -246,11 +265,16 @@ Dev ──▶ Frontend ──▶ API ──▶ CLI ──▶ (git / azure / jira
 - **R7.1** Criar/gerenciar a estrutura de [§5.3](#53-estrutura-de-pastas-da-workspace).
 - **R7.2** `docs/{RFC,ADR,prompts}` como repositório de conhecimento da workspace.
 
-### E8 — CLI (mantida e consumível)
+### E8 — CLI (cliente fino da API)
 
-- **R8.1** A CLI continua funcionando de forma autônoma (uso ocasional do Dev).
-- **R8.2** Toda operação da CLI é **acionável pela API** (O2).
-- **R8.3** Ergonomia da CLI para o Dev é responsabilidade de produto do **Dev**.
+- **R8.1** A CLI é a **porta de entrada do Claude** para o DOP: continua oferecendo os
+  mesmos comandos `dop ...` de hoje (preserva a forma como o Claude opera).
+- **R8.2** A CLI **não acessa a workspace diretamente**; cada comando traduz-se em
+  **chamada(s) à API**. A API é quem executa e detém o estado.
+- **R8.3** Toda operação do DOP é, portanto, exposta pela **API** e refletida na CLI
+  (a CLI nunca tem capacidade que a API não tenha).
+- **R8.4** A CLI permanece **ergonômica para uso ocasional do Dev** (responsabilidade
+  de produto do **Dev**).
 
 ## 7. Inferência (reduzir trabalho e erro do Dev)
 
@@ -290,7 +314,7 @@ refinar):
 | Feature | Épico(s) | Owner (requisitos) | Notas |
 |---|---|---|---|
 | F0 — Fundação (3 componentes, integração Claude, persistência, auth) | E6, E8 | **Claude** | Decisões em §10; destrava o resto. |
-| F1 — API sobre a CLI | E8, E4, E5 | **Claude** | Expor operações atuais via HTTP. |
+| F1 — Núcleo + API; CLI vira cliente fino | E8, E4, E5 | **Claude** | Migrar lógica da CLI p/ o núcleo da API; CLI → API. |
 | F2 — Task Manager Provider (Jira) | E3 | **Claude** | Espelha providers atuais. |
 | F3 — Wizard de Workspace (UI) | E1 | **Dev** (UX) + Claude (infra) | Multi-etapa, save parcial, testes de conexão. |
 | F4 — Inferência de configuração | E1, E7 | **Claude** | Reduzir trabalho/erro do Dev. |
@@ -307,8 +331,11 @@ refinar):
 - **D1 — Mecanismo de integração com o Claude:** Claude Agent SDK (Claude Code
   headless) × Anthropic API direta × `claude` CLI. Afeta chat, operação do DOP e
   contexto.
-- **D2 — Relação API↔CLI:** chamar a CLI in-process (importar os handlers Python) ×
-  como subprocesso. Reuso máximo do código atual sugere in-process.
+- **D2 — Migração do núcleo e CLI-como-cliente:** como extrair a lógica atual do
+  pacote da CLI para um **núcleo consumido pela API**, e como reescrever a CLI como
+  **cliente HTTP fino** preservando os comandos `dop ...`. (A direção — CLI → API — é
+  requisito fixo; o "como" é decisão técnica.) Inclui como o núcleo reusa
+  `git/platform/runtime/core` de hoje.
 - **D3 — Stack:** linguagem/framework da API (provável Python p/ reusar a CLI) e do
   Frontend (SPA); empacotamento e execução local.
 - **D4 — Persistência:** manter `.state.json` em disco × banco (workspaces, demandas,
