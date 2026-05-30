@@ -59,6 +59,23 @@ Dev acompanhando e guiando por cima."*
   do runtime/git providers.
 - **O6.** **Geração assistida** (pelo Claude) de artefatos da workspace (Dockerfiles,
   docker-compose, regras/contexto).
+- **O7.** **Monousuário, multi-projeto em paralelo:** um Dev trabalhando em **várias
+  workspaces/demandas ao mesmo tempo**, com baixa sobrecarga de atenção.
+
+### Filosofia de produto: o Dev é gestor do Claude
+
+No 1.0 o Dev atua **mais como gestor do Claude do que como executor**. O Claude é o
+**mais autônomo possível**: planeja, implementa, cria testes, gera **memórias**
+(contexto, ADRs, prompts) e faz **análises forenses** (ex.: por que um PR conflitou, o
+que mudou entre branches, por que uma pipeline falhou). O Dev **fornece requisitos e
+contexto, decide, aprova e intervém quando o Claude pede** — sem micro-gerenciar.
+
+Consequências de design:
+- A UX é de **supervisão**, não de operação manual: **minimalista**, mostra o essencial
+  ("onde eu sou necessário", estado das demandas) e evita proliferação de telas e
+  relatórios.
+- Com **múltiplos projetos em paralelo**, o recurso escasso do Dev é **atenção** — a
+  ferramenta deve dirigir a atenção, não exigir varredura manual.
 
 ### Não-objetivos do 1.0
 - Não substituir pipelines de CI/CD remotos.
@@ -154,7 +171,33 @@ Dev ──▶ Frontend ───────────────▶ API-DOP 
 - A transição `done → delivered` é detectada por **polling periódico** (intervalo
   configurável), via API/az-cli/MCP (o que for mais simples) — **sem webhook** no 1.0.
 
-### 5.3 Estrutura de pastas da workspace
+### 5.3 Dossiê da demanda
+
+Cada demanda acumula um **dossiê** consultável (apresentação **enxuta**, não relatório):
+- **Git:** repos impactados, branches criadas, commits.
+- **PRs:** PRs enviados e **mergeados**, **quem aprovou**, **conflitos** ocorridos.
+- **Arquivos manipulados:** planos, contextos, **ADRs**, código-fonte criado/alterado.
+- **Testes:** testes unitários criados e **e2e** criados.
+- **Qualidade:** relatórios **Allure** embutidos na própria tela do DOP, por demanda.
+- **Tempo:** início, fim e tempo gasto (por demanda e, quando fizer sentido, por etapa).
+- **Memórias e análises forenses** geradas pelo Claude (persistidas como artefatos).
+- **Logs** das aplicações (na tela de execução).
+
+### 5.4 Modelo de etapas da demanda (BAM em runtime)
+
+Uma demanda é executada em **etapas** (ex.: *planejar → implementar → criar test specs
+→ e2e → testes AAA → criar PR*). As etapas são **definidas por Claude + Dev** (Claude
+propõe a partir do plano; Dev ajusta) — **dinâmicas por demanda**, não um template
+fixo (pode haver um default sugerido).
+
+As etapas geram uma **estrutura de dados versionável** que o DOP usa para renderizar
+uma **tela de acompanhamento em tempo real** — um **BAM** (*Business Activity
+Monitoring*) — onde o Dev:
+- vê o **progresso de cada etapa** (pendente / em execução / concluída / bloqueada);
+- **interage com o Claude em runtime** (responde perguntas, intervém, ajusta o rumo);
+- vê os **logs das aplicações** durante a execução.
+
+### 5.5 Estrutura de pastas da workspace
 ```
 <root>/
 ├── docs/
@@ -226,9 +269,18 @@ Dev ──▶ Frontend ───────────────▶ API-DOP 
 - **R2.4** Dev e Claude interagem até a demanda concluir (→ `done`).
 - **R2.5** **Polling periódico** (intervalo configurável) para detectar **PR
   mergeado** e pipeline executada → `done → delivered`. Sem webhook.
-- **R2.6** **Painel rico da demanda** (UI/UX avançada) com: repos impactados, branches
-  criadas, commits feitos, pipelines executadas, PRs realizados, **quem aprovou o
-  PR**, **conflitos ocorridos**.
+- **R2.6** **Painel rico da demanda** com o **dossiê** ([E9](#e9--dossiê-da-demanda)):
+  repos impactados, branches, commits, pipelines, PRs (enviados/mergeados), quem
+  aprovou, conflitos — em apresentação **enxuta** (não relatório).
+- **R2.7** Manter uma **base local** das demandas — as que o Dev **já trabalhou** e as
+  **atribuídas a ele** — com **polling** periódico para **novas atribuições** (sem
+  webhook).
+- **R2.8** **UX minimalista:** ao entrar na workspace, o Dev vê o essencial (demandas +
+  estado) sem proliferação de telas e relatórios.
+- **R2.9** *(proposto)* **Visão cross-workspace "onde sou necessário":** um ponto único
+  que, **entre todos os projetos**, destaca demandas que precisam da **atenção do Dev**
+  (Claude bloqueado/perguntando, PR aguardando revisão, conflito a decidir). Justifica-se
+  pelo cenário multi-projeto + filosofia "Dev como gestor".
 
 ### E3 — Task Manager Provider (Jira; plugável)
 
@@ -262,7 +314,7 @@ Dev ──▶ Frontend ───────────────▶ API-DOP 
 
 ### E7 — Estrutura de pastas da workspace
 
-- **R7.1** Criar/gerenciar a estrutura de [§5.3](#53-estrutura-de-pastas-da-workspace).
+- **R7.1** Criar/gerenciar a estrutura de [§5.5](#55-estrutura-de-pastas-da-workspace).
 - **R7.2** `docs/{RFC,ADR,prompts}` como repositório de conhecimento da workspace.
 
 ### E8 — CLI (cliente fino da API)
@@ -275,6 +327,44 @@ Dev ──▶ Frontend ───────────────▶ API-DOP 
   (a CLI nunca tem capacidade que a API não tenha).
 - **R8.4** A CLI permanece **ergonômica para uso ocasional do Dev** (responsabilidade
   de produto do **Dev**).
+
+### E9 — Dossiê da demanda
+
+**User story principal**
+> Como Dev (gestor), quero entrar numa demanda e ver **enxutamente** tudo o que o
+> Claude fez — sem telas e relatórios demais — para supervisionar sem operar.
+
+**Requisitos** (ver conceito em [§5.3](#53-dossiê-da-demanda))
+- **R9.1** Git: repos impactados, branches criadas, commits.
+- **R9.2** PRs **enviados** e **mergeados**, **quem aprovou** e **conflitos** ocorridos.
+- **R9.3** **Arquivos manipulados**: planos, contextos, **ADRs**, código-fonte
+  criado/alterado.
+- **R9.4** **Testes** criados e **e2e** criados.
+- **R9.5** **Tempo**: início, fim e tempo gasto (por demanda e, quando fizer sentido,
+  por etapa).
+- **R9.6** **Allure embutido** na tela do DOP, por demanda.
+- **R9.7** **Logs das aplicações** (na tela de execução — liga com [E10](#e10--execução-em-etapas-bam)).
+- **R9.8** **Memórias e análises forenses** do Claude persistidas como artefatos
+  consultáveis.
+- **R9.9** Apresentação **minimalista**: foco no que importa, sem proliferação de telas.
+
+### E10 — Execução em etapas (BAM)
+
+**User story principal**
+> Como Dev, quero acompanhar a demanda em **etapas, em tempo real** (Claude planejando,
+> implementando, criando specs, e2e, AAA, PR), e **interagir com o Claude em runtime**,
+> para acompanhar e guiar sem precisar perguntar "como está?".
+
+**Requisitos** (ver conceito em [§5.4](#54-modelo-de-etapas-da-demanda-bam-em-runtime))
+- **R10.1** Cada demanda tem **etapas definidas por Claude + Dev** (Claude propõe a
+  partir do plano; Dev ajusta) — **dinâmicas por demanda**, com possível default sugerido.
+- **R10.2** As etapas geram uma **estrutura de dados versionável** que o DOP usa para
+  renderizar a **tela de etapas em runtime**.
+- **R10.3** Acompanhamento em **tempo real** do estado de cada etapa (pendente / em
+  execução / concluída / bloqueada).
+- **R10.4** **Interação em runtime** com o Claude a partir da tela de execução
+  (responder perguntas, intervir, ajustar o rumo).
+- **R10.5** A tela de execução exibe os **logs das aplicações** (R9.7).
 
 ## 7. Inferência (reduzir trabalho e erro do Dev)
 
@@ -321,7 +411,9 @@ refinar):
 | F5 — Chat com o Claude (config + dev) | E6, E1.11, E2.3 | **Dev** (UX) + Claude (motor) | Núcleo da colaboração. |
 | F6 — Workflow de Desenvolvimento (lista + painel da demanda) | E2 | **Dev** (UX) + Claude (dados) | UI rica + polling. |
 | F7 — Scaffolding de workspace (Dockerfiles/compose) | E5, E7 | **Claude** | Geração assistida. |
-| F8 — CLI (ergonomia de uso ocasional) | E8 | **Dev** | Mantida. |
+| F8 — CLI (cliente fino da API) | E8 | **Dev** (ergonomia) + Claude (impl.) | Comandos `dop ...` → API. |
+| F9 — Dossiê da demanda | E9 | **Dev** (UX) + Claude (dados) | Visão enxuta; Allure embutido; tempo. |
+| F10 — Execução em etapas (BAM) | E10 | **Dev** (UX) + Claude (motor) | Etapas dinâmicas + interação em runtime. |
 
 ## 10. Decisões técnicas em aberto (a cargo do Claude)
 
@@ -348,11 +440,14 @@ refinar):
 - **D8 — Tempo real no Frontend:** streaming do chat e atualização de status
   (SSE/WebSocket × polling no front).
 - **D9 — Geração de Dockerfiles/compose pelo Claude:** fluxo, validação e versionamento.
+- **D10 — Modelo de dados de etapas + dossiê:** como representar/persistir a estrutura
+  de etapas (BAM) e o dossiê da demanda, e como atualizar a tela em tempo real
+  (relaciona-se a D4 persistência e D8 tempo real).
 
 ## 11. Questões de produto em aberto (a validar com o Dev)
 
-- **P1 — Modelo de uso:** o 1.0 é estritamente **local/single-dev** ou já prevê uso
-  por mais de um Dev? (Impacta auth e expectativa de UX.) *Relaciona-se a D5.*
+- ~~**P1 — Modelo de uso:**~~ **RESOLVIDO:** **monousuário, multi-projeto em paralelo**
+  ([O7](#2-objetivos-e-não-objetivos-do-10)). Sem multiusuário/RBAC no 1.0.
 - **P2 — "Done" por quem:** `done` é decisão conjunta Dev+Claude explícita (botão) ou
   inferida (PR criado)? Confirmar gatilho exato.
 - **P3 — Escopo de "minhas tasks":** filtro de tasks do Jira (assignee = Dev? sprint
@@ -365,6 +460,16 @@ refinar):
   repositórios (branches/PRs/pipelines por repo).
 - **P7 — Regras da workspace:** formato (texto livre para o Claude × regras
   estruturadas que o DOP também valida).
+- **P8 — Etapas (BAM):** há um **conjunto default** de etapas sugerido (planejar →
+  implementar → specs → e2e → AAA → PR), ou é 100% livre por demanda? Quem marca uma
+  etapa como concluída — o Claude, o Dev, ou inferência (ex.: "PR criado" conclui a
+  etapa de PR)?
+- **P9 — Atenção cross-workspace (R2.9):** entra no 1.0 ou fica para depois? Se entrar,
+  quais sinais contam como "preciso do Dev" (pergunta do Claude, PR aguardando revisão,
+  conflito, etapa bloqueada)?
+- **P10 — Captura do dossiê:** o que o DOP coleta automaticamente (git/PR/pipeline/
+  arquivos via diff) × o que o Claude precisa registrar explicitamente (memórias,
+  análises forenses, mapeamento de testes/e2e à demanda)?
 
 ## 12. Fora de escopo do 1.0
 
