@@ -9,6 +9,9 @@ objetivos e os requisitos** de uma capacidade — em complemento aos
 > prescritivos. Itens não implementados aparecem explicitamente em "Fora de escopo"
 > ou "Oportunidades futuras".
 
+> 🚧 **Visão futura:** [PRD Base do DOP 1.0 (MVP)](dop-1.0-mvp/README.md) — a evolução
+> para produto CLI + API + Frontend (documento vivo, fonte para o fatiamento em features).
+
 | # | Título | Capacidade |
 |---|---|---|
 | [0001](0001-plataforma-devops-ia-first.md) | Plataforma DevOps IA-First (visão de produto) | Guarda-chuva |
