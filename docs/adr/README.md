@@ -23,6 +23,7 @@ do histórico Git. Formato baseado em [MADR](https://adr.github.io/madr/).
 | [0011](0011-runtime-docker-compose.md) | Runtime local via `docker compose` | Aceito |
 | [0012](0012-e2e-playwright-allure-strikes.md) | E2E com Playwright + Allure 3 e mecanismo de *strikes* | Aceito |
 | [0013](0013-unificacao-da-cli-dop.md) | Renomeação `iadev`→`dop` e unificação de `dop-devops` | Aceito |
+| [0014](0014-abstracao-de-orquestrador-runtime.md) | Abstração de orquestrador de runtime (RuntimeProvider) + runtime data-driven | Aceito |
 
 ## Convenção de status
 

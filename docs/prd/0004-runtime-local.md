@@ -62,5 +62,8 @@ dop stop                 # para tudo
 
 ## 8. Dívidas conhecidas
 
-- Portas e nomes de serviço têm constantes específicas do workspace Optum em
-  `resolve.py`/`handlers.py`. Migrar essas para o config aumentaria a portabilidade.
+- ~~Portas e nomes de serviço têm constantes específicas do workspace Optum~~ —
+  **resolvido (2026-05-30)**: o runtime tornou-se data-driven e o orquestrador foi
+  abstraído atrás de `RuntimeProvider` (docker_compose; k8s/okd/rancher futuros).
+  Ver [ADR-0014](../adr/0014-abstracao-de-orquestrador-runtime.md) e
+  [`reference/configuration.md`](../reference/configuration.md).

@@ -1,7 +1,7 @@
 # ADR-0011 — Runtime local via `docker compose`
 
-- **Status:** Aceito
-- **Componentes:** `runtime/{compose,resolve,handlers}.py`, `config` (`RuntimeConfig`, `AppConfig`, `FeDependency`)
+- **Status:** Aceito — **evoluído por [ADR-0014](0014-abstracao-de-orquestrador-runtime.md)** (runtime tornou-se data-driven + abstração de orquestrador)
+- **Componentes:** `runtime/{compose,resolve,handlers}.py`, `config` (`RuntimeConfig`, `AppConfig`)
 - **Commits:** `d1c9985`, `595d98b`, `5f847ae`, `0eeb961`, `a82fa9c`
 
 ## Contexto
@@ -44,6 +44,7 @@ Decisões de apoio:
 - ➕ Construtores de comando separados da execução → cobertos por testes
   (`tests/test_runtime_compose.py`, `test_runtime_resolve.py`).
 - ➕ URLs entre serviços são inferidas, não hard-coded pelo usuário.
-- ➖ Forte acoplamento ao `docker compose` e ao layout de repos/portas do workspace
-  Optum (várias constantes de porta/serviço em `resolve.py`/`handlers.py`).
+- ➖ ~~Forte acoplamento ao `docker compose` e ao layout de repos/portas do workspace
+  Optum~~ — **resolvido em [ADR-0014](0014-abstracao-de-orquestrador-runtime.md)**:
+  o runtime é data-driven e o orquestrador é abstraído atrás de `RuntimeProvider`.
 - ➖ Depende de ferramentas do host: `docker`, `lsof`, `npm`/`npx`, `nginx`.

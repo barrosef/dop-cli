@@ -45,26 +45,43 @@ azure_org = "..."               # override de org Azure por repo (opcional)
 azure_project = "..."           # override de projeto Azure por repo (opcional)
 long_branches = ["..."]         # override das branches longas (opcional)
 
-# ─── Runtime ───
+# ─── Runtime (data-driven; ver ADR-0011 e ADR-0014) ───
 [workspaces.<nome>.runtime]
-compose_file = "docker-compose.yml"   # default
-env_file = "docker/.env"              # default
-default_max_strikes = 3               # default (1..10 no e2e)
-compose_timeout = 300                 # default (segundos)
+orchestrator = "docker_compose"   # docker_compose | (futuro: kubernetes/okd/rancher)
+infra = ["mongodb", "allure"]     # serviços lógicos de infra sempre no ar
+default_max_strikes = 3           # default (1..10 no e2e)
 
+# App lógico → serviço do docker-compose.yml
 [workspaces.<nome>.runtime.apps.<app>]
-repo = "<repo>"            # repo a que o app pertence
-kind = "vite"             # java | vite | vue-cli
-port = 5173               # porta do app
-debug_port = 5005         # opcional
-aliases = ["osf"]         # aliases curtos (alimentam runtime.aliases)
-dev_cmd = "npm run dev"   # comando de dev custom (opcional)
-lifesupport_url_env = "AZURE_LIFESUPPORT_URL"   # opcional
+service = "optum-support-fe"   # nome do serviço no docker-compose.yml (obrigatório)
+role = "frontend"              # frontend | backend (obrigatório)
+port = 5173                    # porta servida / E2E (obrigatório)
+aliases = ["osf"]              # aliases curtos (alimentam runtime.aliases)
+depends_on = ["optum-support-be"]  # deps lógicas (auto-start)
+url_env = "OPTUM_SUPPORT_BE_URL"           # (BE) env var p/ injetar a URL
+fallback_url_env = "AZURE_OPTUM_SUPPORT_BE_URL"  # (BE) fallback quando fora do ar
+e2e_suite = "optum-support-fe"             # (FE) diretório em e2e/
+debug_port = 5005                          # opcional
+[workspaces.<nome>.runtime.apps.<app>.build]   # (FE) build no host
+dir = "repos/optum-support-fe"
+command = "npx vite build"
+artifact = "dist"
 
-[[workspaces.<nome>.runtime.fe_deps]]   # dependência FE → BE (auto-start)
-fe = "optum-support-fe"
-be = "optum-support-be"
+# Específico do backend de orquestração
+[workspaces.<nome>.runtime.docker_compose]
+compose_file = "docker-compose.yml"
+env_files = ["docker/.env", "docker/.env.runtime"]
+project_name = "optum-dev"                 # prefixo de volume
+[workspaces.<nome>.runtime.docker_compose.ephemeral_runner]
+service = "playwright-env"
+profile = "e2e"
+[workspaces.<nome>.runtime.docker_compose.clean]   # categoria → volumes
+maven = ["m2-cache"]
+allure = ["allure-results", "allure-reports"]
+node_modules = ["optum-fe-node_modules"]
 ```
+
+> Exemplo completo e validado: [`docs/examples/config.optum.toml`](../examples/config.optum.toml).
 
 ## Dataclasses (resumo)
 
@@ -74,9 +91,11 @@ be = "optum-support-be"
 | `RepoConfig` | `name, dir, base_branch, pr_targets, primary=True, azure_org=None, azure_project=None, long_branches=None` |
 | `CredentialsConfig` | `login_env, token_env, ssh_key_env` |
 | `PlatformConfig` | `org_env, project_env, reviewers_env, org, gitlab_url="https://gitlab.com", namespace` |
-| `RuntimeConfig` | `compose_file, env_file, default_max_strikes=3, compose_timeout=300, apps{}, fe_deps[], aliases{}` |
-| `AppConfig` | `name, repo, kind, port, debug_port=None, aliases=[], dev_cmd=None, lifesupport_url_env=None` |
-| `FeDependency` | `fe, be` |
+| `RuntimeConfig` | `orchestrator="docker_compose", infra[], default_max_strikes=3, apps{}, aliases{}, docker_compose=None` |
+| `AppConfig` | `name, service, role, port, aliases=[], depends_on=[], url_env=None, fallback_url_env=None, e2e_suite=None, build=None, debug_port=None` |
+| `AppBuildConfig` | `dir, command, artifact="dist"` |
+| `DockerComposeConfig` | `compose_file, env_files[], project_name="", ephemeral_runner=None, clean{}` |
+| `EphemeralRunnerConfig` | `service, profile=None` |
 
 > **Segredos não vão no TOML** — apenas os *nomes* das variáveis de ambiente
 > (`*_env`). Os valores reais vivem no ambiente do processo
