@@ -9,8 +9,9 @@ objetivos e os requisitos** de uma capacidade — em complemento aos
 > prescritivos. Itens não implementados aparecem explicitamente em "Fora de escopo"
 > ou "Oportunidades futuras".
 
-> 🚧 **Visão futura:** [PRD Base do DOP 1.0 (MVP)](dop-1.0-mvp/README.md) — a evolução
-> para produto CLI + API + Frontend (documento vivo, fonte para o fatiamento em features).
+> 🚧 **Visão futura (DOP 1.0):** os documentos do produto 1.0 (CLI + API + Frontend)
+> — PRD base e prompt do Replit — vivem agora no **repositório raiz `dop`** (meta-repo),
+> em `docs/prd/dop-1.0-mvp/`. Este repositório (`dop-cli`) documenta a CLI 0.5.x.
 
 | # | Título | Capacidade |
 |---|---|---|
