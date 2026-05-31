@@ -197,6 +197,10 @@ Monitoring*) — onde o Dev:
 - **interage com o Claude em runtime** (responde perguntas, intervém, ajusta o rumo);
 - vê os **logs das aplicações** durante a execução.
 
+A **tela de detalhe/execução** combina **chat + wizard de etapas + faixa de testes
+e2e** (composição detalhada em [E10](#e10--execução-em-etapas-bam)). A **visualização
+ao vivo dos testes Playwright no browser** é um **capítulo de planejamento à parte**.
+
 ### 5.5 Estrutura de pastas da workspace
 ```
 <root>/
@@ -366,6 +370,23 @@ Monitoring*) — onde o Dev:
   (responder perguntas, intervir, ajustar o rumo).
 - **R10.5** A tela de execução exibe os **logs das aplicações** (R9.7).
 
+**Composição da tela de detalhe/execução da demanda**
+- **R10.6** A tela compõe-se de três áreas: **(1) chat** com o Claude (E6); **(2) wizard
+  de etapas** indicando a **etapa atual**, as **já executadas** e as **próximas**; e
+  **(3) faixa de testes e2e** (durante a etapa de e2e).
+- **R10.7** **Faixa de e2e (esteira):** exibe a execução dos testes com **barras de
+  progresso** e **status por teste** — `running` / `success` / `fail` / `skipped`
+  (e estados intermediários conforme necessário).
+- **R10.8** **"Exibir visualmente"** (toggle do Dev, com label intuitiva): quando
+  ligado, transmite a **execução do Playwright no próprio browser**, na **mesma tela de
+  execução**, durante a fase de e2e — o Dev **assiste aos testes rodando** como num
+  monitor.
+- **R10.9** **Capítulo à parte (planejamento dedicado):** a **experiência visual
+  avançada** dos testes (modo imersivo "tipo meeting"/monitor) será **planejada
+  separadamente**. O 1.0 estabelece a base — esteira + status + barras + o toggle
+  "Exibir visualmente"; o *mecanismo de streaming* ao vivo é decisão técnica em aberto
+  (ver [D11](#10-decisões-técnicas-em-aberto-a-cargo-do-claude)).
+
 ## 7. Inferência (reduzir trabalho e erro do Dev)
 
 A aplicação deve **inferir automaticamente** o máximo possível durante a configuração,
@@ -443,6 +464,10 @@ refinar):
 - **D10 — Modelo de dados de etapas + dossiê:** como representar/persistir a estrutura
   de etapas (BAM) e o dossiê da demanda, e como atualizar a tela em tempo real
   (relaciona-se a D4 persistência e D8 tempo real).
+- **D11 — Streaming visual dos testes e2e (R10.8/R10.9):** mecanismo para transmitir a
+  execução do Playwright ao vivo para o browser do DOP — ex.: container *headed* +
+  VNC/noVNC, stream de screenshots, Playwright trace/live, ou outro. É o cerne do
+  **capítulo à parte** de visualização de testes; exige planejamento próprio.
 
 ## 11. Questões de produto em aberto (a validar com o Dev)
 
