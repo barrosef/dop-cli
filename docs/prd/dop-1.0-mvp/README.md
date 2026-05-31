@@ -347,7 +347,14 @@ ao vivo dos testes Playwright no browser** é um **capítulo de planejamento à 
 - **R9.5** **Tempo**: início, fim e tempo gasto (por demanda e, quando fizer sentido,
   por etapa).
 - **R9.6** **Allure embutido** na tela do DOP, por demanda.
-- **R9.7** **Logs das aplicações** (na tela de execução — liga com [E10](#e10--execução-em-etapas-bam)).
+- **R9.7** **Logs da demanda em tempo real** — exibidos na tela (acessíveis por **clique
+  do Dev**, com atualização ao vivo) **e** acessíveis ao **Claude via `dop`** (→ API)
+  para **auditoria e troubleshooting**. Abrangem três fontes:
+  - **(a) Aplicações** envolvidas na demanda — equivalente ao `dop log <app>` de hoje,
+    porém renderizado na tela com atualização em tempo real.
+  - **(b) Testes** — execução dos testes **AAA** e **e2e**.
+  - **(c) Containers de infra/terceiros** — ex.: **mysql/mongo**, **allure** e outros
+    serviços de apoio do runtime.
 - **R9.8** **Memórias e análises forenses** do Claude persistidas como artefatos
   consultáveis.
 - **R9.9** Apresentação **minimalista**: foco no que importa, sem proliferação de telas.
@@ -368,7 +375,9 @@ ao vivo dos testes Playwright no browser** é um **capítulo de planejamento à 
   execução / concluída / bloqueada).
 - **R10.4** **Interação em runtime** com o Claude a partir da tela de execução
   (responder perguntas, intervir, ajustar o rumo).
-- **R10.5** A tela de execução exibe os **logs das aplicações** (R9.7).
+- **R10.5** A tela de execução exibe os **logs em tempo real** da demanda — aplicações,
+  testes (AAA/e2e) e containers de infra/terceiros (mysql/mongo/allure/…) — conforme
+  [R9.7](#e9--dossiê-da-demanda).
 
 **Composição da tela de detalhe/execução da demanda**
 - **R10.6** A tela compõe-se de três áreas: **(1) chat** com o Claude (E6); **(2) wizard
