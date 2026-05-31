@@ -185,14 +185,17 @@ Cada demanda acumula um **dossiê** consultável (apresentação **enxuta**, nã
 
 ### 5.4 Modelo de etapas da demanda (BAM em runtime)
 
-Uma demanda é executada em **etapas** (ex.: *planejar → implementar → criar test specs
-→ e2e → testes AAA → criar PR*). As etapas são **definidas por Claude + Dev** (Claude
-propõe a partir do plano; Dev ajusta) — **dinâmicas por demanda**, não um template
-fixo (pode haver um default sugerido).
+Uma demanda é executada em **etapas pré-definidas (estáticas no MVP)** — por exemplo:
+*planejar → implementar → criar test specs → e2e → testes AAA → criar PR*. No MVP o
+**conjunto de etapas é fixo**; o que o **Dev + Claude definem são as regras e os fluxos
+*dentro* de cada etapa** (o "como" de cada fase), e **não** a lista de etapas em si.
 
-As etapas geram uma **estrutura de dados versionável** que o DOP usa para renderizar
-uma **tela de acompanhamento em tempo real** — um **BAM** (*Business Activity
-Monitoring*) — onde o Dev:
+> **Evolução futura (fora do MVP):** processo **dinâmico** — etapas definidas por
+> Claude + Dev **por demanda** via chat, gerando uma estrutura de dados versionável.
+> No MVP isso é simplificado para o conjunto estático acima. (Ver [§12](#12-fora-de-escopo-do-10).)
+
+A estrutura (estática) de etapas alimenta a **tela de acompanhamento em tempo real** —
+um **BAM** (*Business Activity Monitoring*) — onde o Dev:
 - vê o **progresso de cada etapa** (pendente / em execução / concluída / bloqueada);
 - **interage com o Claude em runtime** (responde perguntas, intervém, ajusta o rumo);
 - vê os **logs das aplicações** durante a execução.
@@ -255,6 +258,10 @@ ao vivo dos testes Playwright no browser** é um **capítulo de planejamento à 
 - **R1.12** Estados de workspace conforme [§5.1](#51-workspace--estados).
 - **R1.13** Tudo o que compõe o `config.toml` atual deve ser configurável pela UI
   (o que não for inferido).
+- **R1.14** *(secundário)* Configurar **extensões do Claude** por workspace:
+  **MCPs** (ex.: postgres, mysql, e outros), **plugins**, **skills** e **comandos
+  customizados** para o Claude. Os comandos customizados são **acionáveis via
+  auto-complete durante o chat** (E6). Isolados por workspace.
 
 ### E2 — Desenvolvimento (trabalhar uma demanda)
 
@@ -314,6 +321,9 @@ ao vivo dos testes Playwright no browser** é um **capítulo de planejamento à 
 - **R6.3** O Claude tem **contexto** da workspace (regras, fluxo, projeto) e da
   demanda corrente.
 - **R6.4** Histórico de conversa por demanda/workspace (persistência — ver [§10](#10-decisões-técnicas-em-aberto-a-cargo-do-claude)).
+- **R6.5** O chat suporta **comandos customizados** da workspace acionáveis por
+  **auto-complete**, e o Claude tem acesso aos **MCPs / plugins / skills** configurados
+  na workspace (R1.14).
 - *Mecanismo técnico de integração (Agent SDK × API × claude CLI): em aberto, §10.*
 
 ### E7 — Estrutura de pastas da workspace
@@ -367,10 +377,10 @@ ao vivo dos testes Playwright no browser** é um **capítulo de planejamento à 
 > para acompanhar e guiar sem precisar perguntar "como está?".
 
 **Requisitos** (ver conceito em [§5.4](#54-modelo-de-etapas-da-demanda-bam-em-runtime))
-- **R10.1** Cada demanda tem **etapas definidas por Claude + Dev** (Claude propõe a
-  partir do plano; Dev ajusta) — **dinâmicas por demanda**, com possível default sugerido.
-- **R10.2** As etapas geram uma **estrutura de dados versionável** que o DOP usa para
-  renderizar a **tela de etapas em runtime**.
+- **R10.1** **MVP:** o conjunto de etapas é **pré-definido (estático)**. Dev + Claude
+  definem **regras e fluxos *dentro* de cada etapa**, não a lista de etapas.
+  *(Futuro: etapas dinâmicas por demanda — ver [§12](#12-fora-de-escopo-do-10).)*
+- **R10.2** A estrutura (estática) de etapas alimenta a **tela de etapas em runtime**.
 - **R10.3** Acompanhamento em **tempo real** do estado de cada etapa (pendente / em
   execução / concluída / bloqueada).
 - **R10.4** **Interação em runtime** com o Claude a partir da tela de execução
@@ -477,6 +487,9 @@ refinar):
   execução do Playwright ao vivo para o browser do DOP — ex.: container *headed* +
   VNC/noVNC, stream de screenshots, Playwright trace/live, ou outro. É o cerne do
   **capítulo à parte** de visualização de testes; exige planejamento próprio.
+- **D12 — Extensões do Claude por workspace (R1.14/R6.5):** como provisionar e isolar
+  **MCPs, plugins, skills e comandos customizados** por workspace, e como expô-los no
+  chat (auto-complete). Relaciona-se a D1 (mecanismo de integração com o Claude).
 
 ## 11. Questões de produto em aberto (a validar com o Dev)
 
@@ -494,10 +507,10 @@ refinar):
   repositórios (branches/PRs/pipelines por repo).
 - **P7 — Regras da workspace:** formato (texto livre para o Claude × regras
   estruturadas que o DOP também valida).
-- **P8 — Etapas (BAM):** há um **conjunto default** de etapas sugerido (planejar →
-  implementar → specs → e2e → AAA → PR), ou é 100% livre por demanda? Quem marca uma
-  etapa como concluída — o Claude, o Dev, ou inferência (ex.: "PR criado" conclui a
-  etapa de PR)?
+- ~~**P8 — Etapas (BAM): default × livre?**~~ **RESOLVIDO:** no MVP as etapas são
+  **estáticas/pré-definidas**; Dev + Claude definem regras/fluxos *dentro* das etapas.
+  *(Ainda em aberto: quem marca a etapa como concluída — Claude / Dev / inferência tipo
+  "PR criado". A definir no detalhamento de E10.)*
 - **P9 — Atenção cross-workspace (R2.9):** entra no 1.0 ou fica para depois? Se entrar,
   quais sinais contam como "preciso do Dev" (pergunta do Claude, PR aguardando revisão,
   conflito, etapa bloqueada)?
@@ -513,6 +526,9 @@ refinar):
 - Merge/aprovação automática de PR.
 - CI/CD remoto gerenciado pelo DOP.
 - Multiusuário com RBAC avançado (depende de P1/D5).
+- **Processo de etapas dinâmico** (etapas geradas por demanda via chat, gerando estrutura
+  de dados versionável) — no MVP o conjunto de etapas é **estático/pré-definido**
+  ([§5.4](#54-modelo-de-etapas-da-demanda-bam-em-runtime), [E10](#e10--execução-em-etapas-bam)).
 
 ## 13. Glossário
 
