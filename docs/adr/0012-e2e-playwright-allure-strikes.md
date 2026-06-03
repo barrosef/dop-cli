@@ -47,3 +47,21 @@ Modelar a execução E2E em `runtime/e2e.py` + handlers:
   cronicamente vermelho — barreira anti-loop importante em automação por IA.
 - ➖ Acoplado ao layout `e2e/<suite>/tests/` e a Allure/Playwright específicos.
 - ➖ Headed exige X11 disponível no host.
+
+## Atualização 0.5.1 — agregação automática do Allure, headed/X11 e permissões
+
+- **Agregação automática (antes quebrada):** `handle_e2e` passou a **copiar** os
+  resultados da run (`reports/<jira>/<suite>/run-N/results`) para o agregado da suíte
+  (`<suite>/.allure-results`) **antes** do `allure generate` (`_merge_allure_results`).
+  Sem isso, o agregado nunca continha a run nova e a demanda "sumia" do allure-ui.
+- **Retenção (decisão):** **default = merge/acumula** — preserva o painel multi-demanda
+  do `groupBy: suite` (cada JIRA aparece como uma suíte). A flag **`--fresh-report`**
+  zera `<suite>/.allure-results` antes de agregar, para contadores só da run atual.
+- **Permissões (P3):** o host **pré-cria** `run-N/results` (só quando não é dry-run).
+  Como os *diretórios* pertencem ao host, o container (root) escreve os arquivos dentro
+  e o host consegue copiar/limpar depois — sem rodar o container como `--user` nem
+  instalar `allure` na imagem.
+- **Headed/X11 (P2):** `dop e2e --headed` concede acesso X11 ao container
+  (`xhost +SI:localuser:root`) e **revoga** num `finally`; `dop codegen` concede e
+  instrui o cleanup manual (o processo é substituído via `execvp`). As flags do Chromium
+  e o screenshot que pendura são do código de teste no workspace, fora do `dop`.

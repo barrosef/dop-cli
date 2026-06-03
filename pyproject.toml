@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dop"
-version = "0.5.0"
+version = "0.5.1"
 description = "DevOps Pipeline CLI - IA-First unified tooling (git+PR, docker-compose runtime, e2e, reports)"
 requires-python = ">=3.11"
 dependencies = [

@@ -195,6 +195,60 @@ def handle_restart(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=N
 # --------------------------------------------------------------------------
 # E2E / codegen / report / clean
 # --------------------------------------------------------------------------
+def _merge_allure_results(src_results: Path, dest_results: Path, *, fresh: bool = False) -> int:
+    """Copia os arquivos de resultado Allure de *src_results* para *dest_results*.
+
+    Faz a ponte entre o que o pytest grava (``reports/<jira>/<suite>/run-N/results``)
+    e o agregado da suíte (``<suite>/.allure-results``) que o ``allure generate`` lê.
+
+    Com ``fresh=True``, limpa o destino antes (contadores só da run atual). É robusto a
+    arquivos de origem criados como root pelo container (apenas leitura/cópia). Retorna
+    a quantidade de arquivos copiados.
+    """
+    import shutil
+
+    if fresh and dest_results.is_dir():
+        for f in dest_results.iterdir():
+            if f.is_file():
+                f.unlink()
+    dest_results.mkdir(parents=True, exist_ok=True)
+    if not src_results.is_dir():
+        return 0
+    count = 0
+    for f in src_results.iterdir():
+        if not f.is_file():
+            continue
+        try:
+            shutil.copy2(f, dest_results / f.name)
+        except OSError:
+            shutil.copyfile(f, dest_results / f.name)
+        count += 1
+    return count
+
+
+def _x11_grant(logger=None) -> None:
+    """Concede acesso X11 ao container (root) via xhost — best-effort (modo headed)."""
+    import subprocess
+    try:
+        subprocess.run(["xhost", "+SI:localuser:root"], capture_output=True, text=True, timeout=5)
+        if logger:
+            logger.info("X11: acesso concedido ao container (xhost +SI:localuser:root)")
+    except Exception as exc:
+        if logger:
+            logger.warn(f"X11: falha ao conceder acesso via xhost ({exc}); a janela headed pode não aparecer.")
+
+
+def _x11_revoke(logger=None) -> None:
+    """Revoga o acesso X11 concedido por _x11_grant — best-effort."""
+    import subprocess
+    try:
+        subprocess.run(["xhost", "-SI:localuser:root"], capture_output=True, text=True, timeout=5)
+        if logger:
+            logger.info("X11: acesso revogado (xhost -SI:localuser:root)")
+    except Exception:
+        pass
+
+
 def handle_e2e(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None) -> int:
     from .e2e import resolve_e2e_target, find_suites_for_jira, next_run_number, suite_order
 
@@ -245,56 +299,96 @@ def handle_e2e(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None)
             seen.add(s)
 
     headed = getattr(args, "headed", False)
+    fresh = getattr(args, "fresh_report", False)
     all_green = True
-    for suite in ordered:
-        pytest_args: list[str] = []
-        if pytest_filter:
-            pytest_args += ["-k", pytest_filter]
-        extra_env = {
-            "E2E_BASE_URL": _suite_base_url(ws, suite),
-            "E2E_API_URL": _suite_api_url(ws, suite),
-        }
-        if headed:
-            pytest_args.append("--headed")
-            extra_env["E2E_SHARED_CONTEXT"] = "1"
-            extra_env["DISPLAY"] = os.environ.get("DISPLAY", ":0")
-        pytest_args += extra_pytest
+    produced: dict[str, Path] = {}
 
-        report_jira = jira_key or "manual"
-        report_dir = reports_root / report_jira / suite
-        report_dir.mkdir(parents=True, exist_ok=True)
-        run_n = next_run_number(report_dir)
-        results_path = f"/e2e/reports/{report_jira}/{suite}/run-{run_n}/results"
-        pytest_args += [f"--alluredir={results_path}"]
+    if headed and not dry_run:
+        _x11_grant(logger=logger)
+    try:
+        for suite in ordered:
+            pytest_args: list[str] = []
+            if pytest_filter:
+                pytest_args += ["-k", pytest_filter]
+            extra_env = {
+                "E2E_BASE_URL": _suite_base_url(ws, suite),
+                "E2E_API_URL": _suite_api_url(ws, suite),
+            }
+            if headed:
+                pytest_args.append("--headed")
+                extra_env["E2E_SHARED_CONTEXT"] = "1"
+                extra_env["DISPLAY"] = os.environ.get("DISPLAY", ":0")
+            pytest_args += extra_pytest
 
-        if logger:
-            logger.info(f"E2E suite: {suite} (run-{run_n})")
-        code = provider.run_ephemeral(
-            [f"/e2e/{suite}"] + pytest_args, env=extra_env, dry_run=dry_run, logger=logger,
+            report_jira = jira_key or "manual"
+            report_dir = reports_root / report_jira / suite
+            run_n = next_run_number(report_dir)
+            # P3: o host pré-cria run-N/results. Assim os DIRETÓRIOS pertencem ao host;
+            # o container (root) escreve os arquivos dentro, e o host consegue copiar e
+            # limpar depois (delete depende de permissão no diretório-pai, não na posse
+            # do arquivo) — sem precisar rodar o container como --user.
+            host_results = report_dir / f"run-{run_n}" / "results"
+            if not dry_run:
+                host_results.mkdir(parents=True, exist_ok=True)
+            produced[suite] = host_results
+            results_path = f"/e2e/reports/{report_jira}/{suite}/run-{run_n}/results"
+            pytest_args += [f"--alluredir={results_path}"]
+
+            if logger:
+                logger.info(f"E2E suite: {suite} (run-{run_n})")
+            code = provider.run_ephemeral(
+                [f"/e2e/{suite}"] + pytest_args, env=extra_env, dry_run=dry_run, logger=logger,
+            )
+            if code == 0:
+                print(f"  ✔ {suite}: green (run-{run_n})")
+            else:
+                print(f"  ✘ {suite}: red (run-{run_n})")
+                all_green = False
+
+        print(f"\nResult: {'green' if all_green else 'red'}")
+        # P1: agrega os resultados da run no .allure-results da suíte e publica.
+        _generate_allure3_reports(
+            e2e_root, suites=ordered, produced=produced, fresh=fresh, dry_run=dry_run,
         )
-        if code == 0:
-            print(f"  ✔ {suite}: green (run-{run_n})")
-        else:
-            print(f"  ✘ {suite}: red (run-{run_n})")
-            all_green = False
-
-    print(f"\nResult: {'green' if all_green else 'red'}")
-    _generate_allure3_reports(e2e_root, suites=ordered, dry_run=dry_run)
+    finally:
+        if headed and not dry_run:
+            _x11_revoke(logger=logger)
     return 0 if all_green else 1
 
 
-def _generate_allure3_reports(e2e_root: Path, *, suites: list, dry_run: bool = False) -> None:
+def _generate_allure3_reports(
+    e2e_root: Path,
+    *,
+    suites: list,
+    produced: dict | None = None,
+    fresh: bool = False,
+    dry_run: bool = False,
+) -> None:
     import shutil
+    produced = produced or {}
     reports_root = e2e_root / "reports"
     for suite in suites:
         suite_dir = e2e_root / suite
         results_dir = suite_dir / ".allure-results"
         report_dir = reports_root / suite
         config_file = suite_dir / "allurerc.yml"
-        if not results_dir.is_dir():
-            continue
+        src = produced.get(suite)
+
         if dry_run:
+            if src is not None:
+                print(f"  [dry-run] {suite}: agregaria resultados de {src} em .allure-results")
             print(f"  [dry-run] Would regenerate Allure report for {suite}")
+            continue
+
+        # P1: copia os resultados da run recém-executada para o agregado da suíte.
+        if src is not None:
+            copied = _merge_allure_results(src, results_dir, fresh=fresh)
+            if copied:
+                mode = "fresh" if fresh else "merge"
+                print(f"  {suite}: {copied} resultado(s) agregados em .allure-results ({mode})")
+
+        if not results_dir.is_dir() or not any(results_dir.iterdir()):
+            print(f"  ⚠ {suite}: sem resultados em .allure-results; pulando geração")
             continue
         try:
             if report_dir.is_dir():
@@ -315,6 +409,11 @@ def handle_codegen(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=N
     url = getattr(args, "url", None) or _suite_base_url(ws, suite)
     out = getattr(args, "out", None) or f"tests/recordings/recording_{now_iso()[:10]}.py"
     print(f"Starting codegen for suite '{suite}' → {url}")
+    if not dry_run:
+        # codegen é inerentemente headed; o processo é substituído (execvp), então não
+        # há como revogar automaticamente depois — instruímos o cleanup manual.
+        _x11_grant(logger=logger)
+        print("  (X11 liberado p/ o container; ao terminar, revogue: xhost -SI:localuser:root)")
     provider.run_ephemeral(
         ["playwright", "codegen", url, "-o", f"/e2e/{suite}/{out}"],
         env={"DISPLAY": os.environ.get("DISPLAY", ":0")},

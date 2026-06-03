@@ -747,6 +747,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_e2e.add_argument("--max-strikes", type=int, default=None, dest="max_strikes", help="Max consecutive reds (1-10)")
     p_e2e.add_argument("--reset-strikes", action="store_true")
     p_e2e.add_argument("-k", dest="k", default=None, help="pytest -k filter")
+    p_e2e.add_argument(
+        "--fresh-report",
+        action="store_true",
+        dest="fresh_report",
+        help="Zera o .allure-results da suíte antes de agregar (contadores só desta run)",
+    )
     p_e2e.set_defaults(func=_make_rt_func(_rt_e2e), command="e2e")
 
     # ── Codegen ──
