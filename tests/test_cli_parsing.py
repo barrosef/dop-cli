@@ -78,6 +78,25 @@ class TestCLIParsing(unittest.TestCase):
         args = cli.build_parser().parse_args(["show", "OG-101"])
         self.assertEqual(args.command, "show")
 
+    def test_aaa_parser(self):
+        args = cli.build_parser().parse_args(["aaa", "lifesupport-api", "-k", "FooTest"])
+        self.assertEqual(args.command, "aaa")
+        self.assertEqual(args.targets, ["lifesupport-api"])
+        self.assertEqual(args.k, "FooTest")
+        self.assertFalse(args.fresh_report)
+
+    def test_aaa_all(self):
+        args = cli.build_parser().parse_args(["aaa", "all", "--fresh-report"])
+        self.assertEqual(args.targets, ["all"])
+        self.assertTrue(args.fresh_report)
+
+    def test_it_parser(self):
+        args = cli.build_parser().parse_args(["it", "optum-support-be"])
+        self.assertEqual(args.command, "it")
+        self.assertEqual(args.targets, ["optum-support-be"])
+        self.assertIsNone(args.k)
+        self.assertFalse(args.fresh_report)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -697,6 +697,8 @@ def build_parser() -> argparse.ArgumentParser:
         handle_restart as _rt_restart,
         handle_rebuild as _rt_rebuild,
         handle_e2e as _rt_e2e,
+        handle_aaa as _rt_aaa,
+        handle_it as _rt_it,
         handle_codegen as _rt_codegen,
         handle_report as _rt_report,
         handle_clean as _rt_clean,
@@ -754,6 +756,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Zera o .allure-results da suíte antes de agregar (contadores só desta run)",
     )
     p_e2e.set_defaults(func=_make_rt_func(_rt_e2e), command="e2e")
+
+    # ── AAA (unit, Java) ──
+    p_aaa = sub.add_parser("aaa", help="Run unit AAA tests (Maven, host)")
+    p_aaa.add_argument("targets", nargs="*", help="Repo name(s) or 'all'")
+    p_aaa.add_argument("-k", dest="k", default=None, help="Maven -Dtest filter")
+    p_aaa.add_argument("--fresh-report", action="store_true", dest="fresh_report",
+                       help="Zera o .allure-results do projeto antes de agregar")
+    p_aaa.set_defaults(func=_make_rt_func(_rt_aaa), command="aaa")
+
+    # ── IT (integração, Testcontainers) ──
+    p_it = sub.add_parser("it", help="Run integration tests (Maven failsafe, host)")
+    p_it.add_argument("targets", nargs="*", help="Repo name(s) or 'all'")
+    p_it.add_argument("-k", dest="k", default=None, help="Maven -Dit.test filter")
+    p_it.add_argument("--fresh-report", action="store_true", dest="fresh_report",
+                      help="Zera o .allure-results do projeto antes de agregar")
+    p_it.set_defaults(func=_make_rt_func(_rt_it), command="it")
 
     # ── Codegen ──
     p_codegen = sub.add_parser("codegen", help="Playwright codegen recording")
