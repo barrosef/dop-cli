@@ -1,10 +1,12 @@
 # src/dop/runtime/handlers.py
 from __future__ import annotations
 import os
+import subprocess
 from pathlib import Path
 
 from ..config.schema import WorkspaceConfig
 from ..core.errors import ValidationError
+from ..core.security import guard_text
 from ..core.process import run_command
 from .resolve import expand_apps, infer_urls
 from .compose import write_env_runtime
@@ -89,10 +91,48 @@ def _build_frontends(ws: WorkspaceConfig, requested: set[str], *, dry_run: bool 
 
 
 def _check_port_available(port: int) -> None:
-    import subprocess
     result = subprocess.run(["lsof", "-i", f":{port}", "-t"], capture_output=True, text=True)
     if result.returncode == 0 and result.stdout.strip():
         raise ValidationError(f"Port {port} already in use (PIDs: {result.stdout.strip()})")
+
+
+def _run_maven(cmd: list[str], *, cwd: Path, dry_run: bool = False, logger=None) -> int:
+    """Run a Maven command on the host, streaming output. Returns the exit code
+    (does NOT raise on test failure, so callers can still publish Allure)."""
+    display = " ".join(cmd)
+    guard_text(display)
+    if dry_run:
+        if logger:
+            logger.info(f"WOULD RUN: {display} (cwd={cwd})")
+        return 0
+    if logger:
+        logger.info(f"RUN: {display} (cwd={cwd})")
+    result = subprocess.run(cmd, cwd=str(cwd))
+    return result.returncode
+
+
+def _resolve_test_targets(root: Path, targets: list[str]) -> list[str]:
+    """Resolve *targets* (repo names or ``all``) to project dirs under *root*
+    that contain a ``pom.xml``. If ``all`` is among the targets it takes
+    precedence and every available project is returned. Unknown explicit
+    target -> ValidationError."""
+    available = sorted(
+        d.name for d in root.iterdir()
+        if d.is_dir() and (d / "pom.xml").is_file()
+    ) if root.is_dir() else []
+    if not targets:
+        raise ValidationError("No target specified. Use: <repo|all>")
+    if "all" in targets:
+        return available
+    resolved: list[str] = []
+    for t in targets:
+        if t not in available:
+            raise ValidationError(
+                f"No test project '{t}' in {root} "
+                f"(available: {', '.join(available) or 'none'})"
+            )
+        resolved.append(t)
+    return resolved
 
 
 # --------------------------------------------------------------------------

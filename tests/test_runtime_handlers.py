@@ -1,6 +1,7 @@
 import argparse
 from unittest.mock import MagicMock, patch
 import pytest
+from dop.core.errors import ValidationError
 from dop.config.schema import (
     WorkspaceConfig, RuntimeConfig, AppConfig,
     DockerComposeConfig, EphemeralRunnerConfig,
@@ -116,3 +117,42 @@ def test_handle_report_clean_uses_test_root(tmp_path):
     # 7 runs, keep last 5 -> 2 oldest removed -> 5 remain (only works if clean
     # resolved the path under test/e2e/reports, i.e. honored ws.test_root)
     assert sum(1 for _ in runs.iterdir()) == 5
+
+
+def test_run_maven_returns_code(tmp_path):
+    fake = MagicMock()
+    fake.returncode = 1
+    with patch("dop.runtime.handlers.subprocess.run", return_value=fake) as sr:
+        code = handlers._run_maven(["mvn", "test"], cwd=tmp_path)
+    assert code == 1
+    sr.assert_called_once()
+
+
+def test_run_maven_dry_run(tmp_path):
+    with patch("dop.runtime.handlers.subprocess.run") as sr:
+        code = handlers._run_maven(["mvn", "test"], cwd=tmp_path, dry_run=True)
+    assert code == 0
+    sr.assert_not_called()
+
+
+def test_resolve_test_targets_all(tmp_path):
+    for repo in ("alpha", "beta"):
+        (tmp_path / repo).mkdir()
+        (tmp_path / repo / "pom.xml").write_text("<project/>")
+    (tmp_path / "no-pom").mkdir()
+    assert handlers._resolve_test_targets(tmp_path, ["all"]) == ["alpha", "beta"]
+
+
+def test_resolve_test_targets_explicit_missing(tmp_path):
+    with pytest.raises(ValidationError):
+        handlers._resolve_test_targets(tmp_path, ["ghost"])
+
+
+def test_resolve_test_targets_explicit_present(tmp_path):
+    (tmp_path / "alpha").mkdir()
+    (tmp_path / "alpha" / "pom.xml").write_text("<project/>")
+    assert handlers._resolve_test_targets(tmp_path, ["alpha"]) == ["alpha"]
+
+
+def test_resolve_test_targets_empty_root_all(tmp_path):
+    assert handlers._resolve_test_targets(tmp_path / "nope", ["all"]) == []
