@@ -399,6 +399,61 @@ def handle_e2e(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None)
     return 0 if all_green else 1
 
 
+def _handle_maven_layer(
+    ws: WorkspaceConfig, args, *, layer: str, root: Path,
+    maven_args: list[str], filter_prop: str, dry_run: bool = False, logger=None,
+) -> int:
+    """Shared driver for aaa/it: run host Maven per project, publish Allure."""
+    repos = _resolve_test_targets(root, getattr(args, "targets", []) or [])
+    if not repos:
+        print(f"No {layer} projects found in {root}")
+        return 0
+
+    k = getattr(args, "k", None)
+    fresh = getattr(args, "fresh_report", False)
+    reports_root = _ws_root(ws) / ws.test_root / "reports"
+    all_green = True
+
+    for repo in repos:
+        project_dir = root / repo
+        mvn = "./mvnw" if (project_dir / "mvnw").is_file() else "mvn"
+        cmd = [mvn] + list(maven_args)
+        if k:
+            cmd.append(f"{filter_prop}={k}")
+        if logger:
+            logger.info(f"{layer}: {repo}")
+        code = _run_maven(cmd, cwd=project_dir, dry_run=dry_run, logger=logger)
+        if code == 0:
+            print(f"  ✔ {repo}: green")
+        else:
+            print(f"  ✘ {repo}: red")
+            all_green = False
+        _publish_allure_project(
+            project=f"{layer}-{repo}",
+            results_dir=project_dir / ".allure-results",
+            reports_root=reports_root,
+            src=project_dir / "target" / "allure-results",
+            fresh=fresh, dry_run=dry_run, logger=logger,
+        )
+
+    print(f"\nResult: {'green' if all_green else 'red'}")
+    return 0 if all_green else 1
+
+
+def handle_aaa(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None) -> int:
+    return _handle_maven_layer(
+        ws, args, layer="aaa", root=_ws_root(ws) / ws.aaa_root,
+        maven_args=["test"], filter_prop="-Dtest", dry_run=dry_run, logger=logger,
+    )
+
+
+def handle_it(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None) -> int:
+    return _handle_maven_layer(
+        ws, args, layer="it", root=_ws_root(ws) / ws.it_root,
+        maven_args=["-Pit", "verify"], filter_prop="-Dit.test", dry_run=dry_run, logger=logger,
+    )
+
+
 def _publish_allure_project(
     *,
     project: str,

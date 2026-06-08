@@ -156,3 +156,86 @@ def test_resolve_test_targets_explicit_present(tmp_path):
 
 def test_resolve_test_targets_empty_root_all(tmp_path):
     assert handlers._resolve_test_targets(tmp_path / "nope", ["all"]) == []
+
+
+def _make_project(root, repo, *, mvnw=False):
+    p = root / repo
+    p.mkdir(parents=True)
+    (p / "pom.xml").write_text("<project/>")
+    if mvnw:
+        (p / "mvnw").write_text("#!/bin/sh\n")
+    return p
+
+
+def test_handle_aaa_runs_mvn_test_and_publishes(tmp_path):
+    ws = _ws()
+    ws.root = str(tmp_path)
+    ws.test_root = "test/e2e"
+    ws.aaa_root = "test/aaa"
+    _make_project(tmp_path / "test/aaa", "lifesupport-api")
+    with patch("dop.runtime.handlers._run_maven", return_value=0) as rm, \
+         patch("dop.runtime.handlers._publish_allure_project") as pub:
+        rc = handlers.handle_aaa(
+            ws, _args(targets=["lifesupport-api"], k=None, fresh_report=False))
+    assert rc == 0
+    cmd = rm.call_args.args[0]
+    assert cmd[0] == "mvn"
+    assert "test" in cmd
+    assert pub.call_args.kwargs["project"] == "aaa-lifesupport-api"
+
+
+def test_handle_aaa_uses_mvnw_when_present_and_k_filter(tmp_path):
+    ws = _ws(); ws.root = str(tmp_path); ws.aaa_root = "test/aaa"; ws.test_root = "test/e2e"
+    _make_project(tmp_path / "test/aaa", "demo", mvnw=True)
+    with patch("dop.runtime.handlers._run_maven", return_value=0) as rm, \
+         patch("dop.runtime.handlers._publish_allure_project"):
+        handlers.handle_aaa(ws, _args(targets=["demo"], k="FooTest", fresh_report=False))
+    cmd = rm.call_args.args[0]
+    assert cmd[0] == "./mvnw"
+    assert "-Dtest=FooTest" in cmd
+
+
+def test_handle_it_runs_pit_verify(tmp_path):
+    ws = _ws(); ws.root = str(tmp_path); ws.it_root = "test/it"; ws.test_root = "test/e2e"
+    _make_project(tmp_path / "test/it", "optum-support-be")
+    with patch("dop.runtime.handlers._run_maven", return_value=0) as rm, \
+         patch("dop.runtime.handlers._publish_allure_project") as pub:
+        rc = handlers.handle_it(
+            ws, _args(targets=["optum-support-be"], k=None, fresh_report=False))
+    assert rc == 0
+    cmd = rm.call_args.args[0]
+    assert "-Pit" in cmd and "verify" in cmd
+    assert pub.call_args.kwargs["project"] == "it-optum-support-be"
+
+
+def test_handle_aaa_red_when_mvn_fails(tmp_path):
+    ws = _ws(); ws.root = str(tmp_path); ws.aaa_root = "test/aaa"; ws.test_root = "test/e2e"
+    _make_project(tmp_path / "test/aaa", "demo")
+    with patch("dop.runtime.handlers._run_maven", return_value=1), \
+         patch("dop.runtime.handlers._publish_allure_project") as pub:
+        rc = handlers.handle_aaa(ws, _args(targets=["demo"], k=None, fresh_report=False))
+    assert rc == 1
+    pub.assert_called_once()  # Allure is published even when the run is red
+
+
+def test_handle_aaa_all_empty_root_is_noop_green(tmp_path):
+    ws = _ws(); ws.root = str(tmp_path); ws.aaa_root = "test/aaa"; ws.test_root = "test/e2e"
+    with patch("dop.runtime.handlers._run_maven") as rm, \
+         patch("dop.runtime.handlers._publish_allure_project"):
+        rc = handlers.handle_aaa(ws, _args(targets=["all"], k=None, fresh_report=False))
+    assert rc == 0
+    rm.assert_not_called()
+
+
+def test_handle_aaa_all_multi_repo_mixed(tmp_path):
+    ws = _ws(); ws.root = str(tmp_path); ws.aaa_root = "test/aaa"; ws.test_root = "test/e2e"
+    _make_project(tmp_path / "test/aaa", "a-pass")
+    _make_project(tmp_path / "test/aaa", "z-fail")
+    with patch("dop.runtime.handlers._run_maven", side_effect=[0, 1]) as rm, \
+         patch("dop.runtime.handlers._publish_allure_project") as pub:
+        rc = handlers.handle_aaa(ws, _args(targets=["all"], k=None, fresh_report=False))
+    assert rc == 1                      # one red -> overall red
+    assert rm.call_count == 2          # both repos ran
+    assert pub.call_count == 2         # both repos published, including the failing one
+    projects = sorted(c.kwargs["project"] for c in pub.call_args_list)
+    assert projects == ["aaa-a-pass", "aaa-z-fail"]
