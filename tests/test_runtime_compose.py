@@ -79,3 +79,30 @@ def test_write_env_runtime(tmp_path):
     content = out.read_text()
     assert "LIFESUPPORT_URL=http://ls:8082" in content
     assert "FOO=bar" in content
+
+
+def test_build_run_command_with_workdir():
+    cmd = build_run_command(
+        compose_file=Path("/ws/docker-compose.yml"),
+        service="java-test",
+        args=["mvn", "test"],
+        profile="test",
+        workdir="/workspace/test/aaa/demo",
+    )
+    assert "run" in cmd and "--rm" in cmd
+    assert "-w" in cmd
+    assert cmd[cmd.index("-w") + 1] == "/workspace/test/aaa/demo"
+    assert cmd.index("-w") < cmd.index("java-test")
+    assert cmd.index("--rm") < cmd.index("-w")
+    assert cmd[-2:] == ["mvn", "test"]
+
+
+def test_build_run_command_without_workdir_unchanged():
+    cmd = build_run_command(
+        compose_file=Path("/ws/docker-compose.yml"),
+        service="playwright-env",
+        args=["/e2e/suite"],
+        profile="e2e",
+    )
+    assert "-w" not in cmd
+    assert cmd[-1] == "/e2e/suite"

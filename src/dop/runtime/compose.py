@@ -62,6 +62,7 @@ def build_run_command(
     args: list[str],
     profile: str | None = None,
     extra_env: dict[str, str] | None = None,
+    workdir: str | None = None,
 ) -> list[str]:
     """Build a `docker compose run --rm` command list."""
     cmd = ["docker", "compose", "-f", str(compose_file)]
@@ -73,6 +74,8 @@ def build_run_command(
     cmd += ["run", "--rm"]
     for k, v in (extra_env or {}).items():
         cmd += ["-e", f"{k}={v}"]
+    if workdir:
+        cmd += ["-w", workdir]
     cmd += [service] + args
     return cmd
 
