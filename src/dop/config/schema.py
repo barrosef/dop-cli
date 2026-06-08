@@ -64,11 +64,19 @@ class EphemeralRunnerConfig:
 
 
 @dataclass
+class JavaRunnerConfig:
+    """Serviço usado para rodar Maven (aaa/it) em container efêmero."""
+    service: str
+    profile: str | None = None
+
+
+@dataclass
 class DockerComposeConfig:
     compose_file: str = "docker-compose.yml"
     env_files: list[str] = field(default_factory=lambda: ["docker/.env"])
     project_name: str = ""              # prefixo de volume (docker compose project)
     ephemeral_runner: EphemeralRunnerConfig | None = None
+    java_runner: JavaRunnerConfig | None = None
     clean: dict[str, list[str]] = field(default_factory=dict)  # categoria -> volumes
 
 

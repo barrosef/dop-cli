@@ -65,3 +65,17 @@ def test_workspace_test_roots_override():
     assert ws.test_root == "custom/e2e"
     assert ws.aaa_root == "custom/aaa"
     assert ws.it_root == "custom/it"
+
+
+def test_java_runner_config_default_none():
+    from dop.config.schema import DockerComposeConfig
+    dc = DockerComposeConfig()
+    assert dc.java_runner is None
+
+
+def test_java_runner_config_values():
+    from dop.config.schema import DockerComposeConfig, JavaRunnerConfig
+    jr = JavaRunnerConfig(service="java-test", profile="test")
+    dc = DockerComposeConfig(java_runner=jr)
+    assert dc.java_runner.service == "java-test"
+    assert dc.java_runner.profile == "test"

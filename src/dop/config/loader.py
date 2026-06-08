@@ -7,7 +7,7 @@ from pathlib import Path
 from .schema import (
     WorkspaceConfig, RepoConfig, CredentialsConfig, PlatformConfig,
     RuntimeConfig, AppConfig, AppBuildConfig,
-    DockerComposeConfig, EphemeralRunnerConfig,
+    DockerComposeConfig, EphemeralRunnerConfig, JavaRunnerConfig,
 )
 
 CONFIG_DEFAULT_PATH = Path.home() / ".config" / "dop" / "config.toml"
@@ -105,11 +105,19 @@ def _parse_workspace(name: str, data: dict) -> WorkspaceConfig:
                 service=runner_raw["service"],
                 profile=runner_raw.get("profile"),
             )
+        jr_raw = dc_raw.get("java_runner")
+        java_runner = None
+        if jr_raw is not None:
+            java_runner = JavaRunnerConfig(
+                service=jr_raw["service"],
+                profile=jr_raw.get("profile"),
+            )
         docker_compose = DockerComposeConfig(
             compose_file=dc_raw.get("compose_file", "docker-compose.yml"),
             env_files=dc_raw.get("env_files", ["docker/.env"]),
             project_name=dc_raw.get("project_name", ""),
             ephemeral_runner=ephemeral_runner,
+            java_runner=java_runner,
             clean=dc_raw.get("clean", {}),
         )
 
