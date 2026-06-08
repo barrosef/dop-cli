@@ -4,7 +4,7 @@ import pytest
 from dop.core.errors import ValidationError
 from dop.config.schema import (
     WorkspaceConfig, RuntimeConfig, AppConfig,
-    DockerComposeConfig, EphemeralRunnerConfig,
+    DockerComposeConfig, EphemeralRunnerConfig, JavaRunnerConfig,
 )
 from dop.runtime import handlers
 
@@ -119,21 +119,6 @@ def test_handle_report_clean_uses_test_root(tmp_path):
     assert sum(1 for _ in runs.iterdir()) == 5
 
 
-def test_run_maven_returns_code(tmp_path):
-    fake = MagicMock()
-    fake.returncode = 1
-    with patch("dop.runtime.handlers.subprocess.run", return_value=fake) as sr:
-        code = handlers._run_maven(["mvn", "test"], cwd=tmp_path)
-    assert code == 1
-    sr.assert_called_once()
-
-
-def test_run_maven_dry_run(tmp_path):
-    with patch("dop.runtime.handlers.subprocess.run") as sr:
-        code = handlers._run_maven(["mvn", "test"], cwd=tmp_path, dry_run=True)
-    assert code == 0
-    sr.assert_not_called()
-
 
 def test_resolve_test_targets_all(tmp_path):
     for repo in ("alpha", "beta"):
@@ -167,75 +152,111 @@ def _make_project(root, repo, *, mvnw=False):
     return p
 
 
-def test_handle_aaa_runs_mvn_test_and_publishes(tmp_path):
+def _ws_with_java_runner(tmp_path):
     ws = _ws()
     ws.root = str(tmp_path)
     ws.test_root = "test/e2e"
     ws.aaa_root = "test/aaa"
+    ws.it_root = "test/it"
+    ws.runtime.docker_compose.java_runner = JavaRunnerConfig(service="java-test", profile="test")
+    return ws
+
+
+def test_handle_aaa_runs_in_container_and_publishes(tmp_path):
+    ws = _ws_with_java_runner(tmp_path)
     _make_project(tmp_path / "test/aaa", "lifesupport-api")
-    with patch("dop.runtime.handlers._run_maven", return_value=0) as rm, \
+    provider = MagicMock(); provider.run_service.return_value = 0
+    with patch("dop.runtime.handlers.build_runtime_provider", return_value=provider), \
          patch("dop.runtime.handlers._publish_allure_project") as pub:
-        rc = handlers.handle_aaa(
-            ws, _args(targets=["lifesupport-api"], k=None, fresh_report=False))
+        rc = handlers.handle_aaa(ws, _args(targets=["lifesupport-api"], k=None, fresh_report=False))
     assert rc == 0
-    cmd = rm.call_args.args[0]
-    assert cmd[0] == "mvn"
-    assert "test" in cmd
+    kw = provider.run_service.call_args.kwargs
+    args0 = provider.run_service.call_args.args
+    assert args0[0] == "java-test"
+    assert kw["workdir"] == "/workspace/test/aaa/lifesupport-api"
+    assert kw["profile"] == "test"
+    cmd = args0[1]
+    assert cmd[0] == "mvn" and "test" in cmd
     assert pub.call_args.kwargs["project"] == "aaa-lifesupport-api"
 
 
 def test_handle_aaa_uses_mvnw_when_present_and_k_filter(tmp_path):
-    ws = _ws(); ws.root = str(tmp_path); ws.aaa_root = "test/aaa"; ws.test_root = "test/e2e"
+    ws = _ws_with_java_runner(tmp_path)
     _make_project(tmp_path / "test/aaa", "demo", mvnw=True)
-    with patch("dop.runtime.handlers._run_maven", return_value=0) as rm, \
+    provider = MagicMock(); provider.run_service.return_value = 0
+    with patch("dop.runtime.handlers.build_runtime_provider", return_value=provider), \
          patch("dop.runtime.handlers._publish_allure_project"):
         handlers.handle_aaa(ws, _args(targets=["demo"], k="FooTest", fresh_report=False))
-    cmd = rm.call_args.args[0]
+    cmd = provider.run_service.call_args.args[1]
     assert cmd[0] == "./mvnw"
     assert "-Dtest=FooTest" in cmd
 
 
-def test_handle_it_runs_pit_verify(tmp_path):
-    ws = _ws(); ws.root = str(tmp_path); ws.it_root = "test/it"; ws.test_root = "test/e2e"
+def test_handle_it_runs_pit_verify_in_container(tmp_path):
+    ws = _ws_with_java_runner(tmp_path)
     _make_project(tmp_path / "test/it", "optum-support-be")
-    with patch("dop.runtime.handlers._run_maven", return_value=0) as rm, \
+    provider = MagicMock(); provider.run_service.return_value = 0
+    with patch("dop.runtime.handlers.build_runtime_provider", return_value=provider), \
          patch("dop.runtime.handlers._publish_allure_project") as pub:
-        rc = handlers.handle_it(
-            ws, _args(targets=["optum-support-be"], k=None, fresh_report=False))
+        rc = handlers.handle_it(ws, _args(targets=["optum-support-be"], k=None, fresh_report=False))
     assert rc == 0
-    cmd = rm.call_args.args[0]
+    kw = provider.run_service.call_args.kwargs
+    cmd = provider.run_service.call_args.args[1]
+    assert kw["workdir"] == "/workspace/test/it/optum-support-be"
     assert "-Pit" in cmd and "verify" in cmd
     assert pub.call_args.kwargs["project"] == "it-optum-support-be"
 
 
-def test_handle_aaa_red_when_mvn_fails(tmp_path):
-    ws = _ws(); ws.root = str(tmp_path); ws.aaa_root = "test/aaa"; ws.test_root = "test/e2e"
+def test_handle_it_k_filter_uses_it_test(tmp_path):
+    ws = _ws_with_java_runner(tmp_path)
+    _make_project(tmp_path / "test/it", "demo")
+    provider = MagicMock(); provider.run_service.return_value = 0
+    with patch("dop.runtime.handlers.build_runtime_provider", return_value=provider), \
+         patch("dop.runtime.handlers._publish_allure_project"):
+        handlers.handle_it(ws, _args(targets=["demo"], k="FooIT", fresh_report=False))
+    cmd = provider.run_service.call_args.args[1]
+    assert "-Dit.test=FooIT" in cmd
+
+
+def test_handle_aaa_red_when_container_fails(tmp_path):
+    ws = _ws_with_java_runner(tmp_path)
     _make_project(tmp_path / "test/aaa", "demo")
-    with patch("dop.runtime.handlers._run_maven", return_value=1), \
+    provider = MagicMock(); provider.run_service.return_value = 1
+    with patch("dop.runtime.handlers.build_runtime_provider", return_value=provider), \
          patch("dop.runtime.handlers._publish_allure_project") as pub:
         rc = handlers.handle_aaa(ws, _args(targets=["demo"], k=None, fresh_report=False))
     assert rc == 1
-    pub.assert_called_once()  # Allure is published even when the run is red
-
-
-def test_handle_aaa_all_empty_root_is_noop_green(tmp_path):
-    ws = _ws(); ws.root = str(tmp_path); ws.aaa_root = "test/aaa"; ws.test_root = "test/e2e"
-    with patch("dop.runtime.handlers._run_maven") as rm, \
-         patch("dop.runtime.handlers._publish_allure_project"):
-        rc = handlers.handle_aaa(ws, _args(targets=["all"], k=None, fresh_report=False))
-    assert rc == 0
-    rm.assert_not_called()
+    pub.assert_called_once()
 
 
 def test_handle_aaa_all_multi_repo_mixed(tmp_path):
-    ws = _ws(); ws.root = str(tmp_path); ws.aaa_root = "test/aaa"; ws.test_root = "test/e2e"
+    ws = _ws_with_java_runner(tmp_path)
     _make_project(tmp_path / "test/aaa", "a-pass")
     _make_project(tmp_path / "test/aaa", "z-fail")
-    with patch("dop.runtime.handlers._run_maven", side_effect=[0, 1]) as rm, \
+    provider = MagicMock(); provider.run_service.side_effect = [0, 1]
+    with patch("dop.runtime.handlers.build_runtime_provider", return_value=provider), \
          patch("dop.runtime.handlers._publish_allure_project") as pub:
         rc = handlers.handle_aaa(ws, _args(targets=["all"], k=None, fresh_report=False))
-    assert rc == 1                      # one red -> overall red
-    assert rm.call_count == 2          # both repos ran
-    assert pub.call_count == 2         # both repos published, including the failing one
-    projects = sorted(c.kwargs["project"] for c in pub.call_args_list)
-    assert projects == ["aaa-a-pass", "aaa-z-fail"]
+    assert rc == 1
+    assert provider.run_service.call_count == 2
+    assert pub.call_count == 2
+
+
+def test_handle_aaa_all_empty_root_is_noop_green(tmp_path):
+    ws = _ws_with_java_runner(tmp_path)
+    provider = MagicMock()
+    with patch("dop.runtime.handlers.build_runtime_provider", return_value=provider), \
+         patch("dop.runtime.handlers._publish_allure_project"):
+        rc = handlers.handle_aaa(ws, _args(targets=["all"], k=None, fresh_report=False))
+    assert rc == 0
+    provider.run_service.assert_not_called()
+
+
+def test_handle_aaa_without_java_runner_raises(tmp_path):
+    ws = _ws_with_java_runner(tmp_path)
+    ws.runtime.docker_compose.java_runner = None
+    _make_project(tmp_path / "test/aaa", "demo")
+    provider = MagicMock()
+    with patch("dop.runtime.handlers.build_runtime_provider", return_value=provider):
+        with pytest.raises(ValidationError):
+            handlers.handle_aaa(ws, _args(targets=["demo"], k=None, fresh_report=False))

@@ -6,7 +6,6 @@ from pathlib import Path
 
 from ..config.schema import WorkspaceConfig
 from ..core.errors import ValidationError
-from ..core.security import guard_text
 from ..core.process import run_command
 from .resolve import expand_apps, infer_urls
 from .compose import write_env_runtime
@@ -95,20 +94,6 @@ def _check_port_available(port: int) -> None:
     if result.returncode == 0 and result.stdout.strip():
         raise ValidationError(f"Port {port} already in use (PIDs: {result.stdout.strip()})")
 
-
-def _run_maven(cmd: list[str], *, cwd: Path, dry_run: bool = False, logger=None) -> int:
-    """Run a Maven command on the host, streaming output. Returns the exit code
-    (does NOT raise on test failure, so callers can still publish Allure)."""
-    display = " ".join(cmd)
-    guard_text(display)
-    if dry_run:
-        if logger:
-            logger.info(f"WOULD RUN: {display} (cwd={cwd})")
-        return 0
-    if logger:
-        logger.info(f"RUN: {display} (cwd={cwd})")
-    result = subprocess.run(cmd, cwd=str(cwd))
-    return result.returncode
 
 
 def _resolve_test_targets(root: Path, targets: list[str]) -> list[str]:
@@ -400,15 +385,25 @@ def handle_e2e(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None)
 
 
 def _handle_maven_layer(
-    ws: WorkspaceConfig, args, *, layer: str, root: Path,
+    ws: WorkspaceConfig, args, *, layer: str, root_rel: str,
     maven_args: list[str], filter_prop: str, dry_run: bool = False, logger=None,
 ) -> int:
-    """Shared driver for aaa/it: run host Maven per project, publish Allure."""
+    """Shared driver for aaa/it: run Maven in the java_runner container, publish Allure."""
+    root = _ws_root(ws) / root_rel
     repos = _resolve_test_targets(root, getattr(args, "targets", []) or [])
     if not repos:
         print(f"No {layer} projects found in {root}")
         return 0
 
+    dc = _dc(ws)
+    runner = dc.java_runner
+    if runner is None:
+        raise ValidationError(
+            "No java_runner configured in "
+            "[runtime.docker_compose.java_runner] (needed for dop aaa/it)."
+        )
+
+    provider = build_runtime_provider(ws)
     k = getattr(args, "k", None)
     fresh = getattr(args, "fresh_report", False)
     reports_root = _ws_root(ws) / ws.test_root / "reports"
@@ -420,9 +415,13 @@ def _handle_maven_layer(
         cmd = [mvn] + list(maven_args)
         if k:
             cmd.append(f"{filter_prop}={k}")
+        workdir = f"/workspace/{root_rel}/{repo}"
         if logger:
-            logger.info(f"{layer}: {repo}")
-        code = _run_maven(cmd, cwd=project_dir, dry_run=dry_run, logger=logger)
+            logger.info(f"{layer}: {repo} (container {runner.service}, workdir {workdir})")
+        code = provider.run_service(
+            runner.service, cmd, profile=runner.profile, workdir=workdir,
+            dry_run=dry_run, logger=logger,
+        )
         if code == 0:
             print(f"  ✔ {repo}: green")
         else:
@@ -442,14 +441,14 @@ def _handle_maven_layer(
 
 def handle_aaa(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None) -> int:
     return _handle_maven_layer(
-        ws, args, layer="aaa", root=_ws_root(ws) / ws.aaa_root,
+        ws, args, layer="aaa", root_rel=ws.aaa_root,
         maven_args=["test"], filter_prop="-Dtest", dry_run=dry_run, logger=logger,
     )
 
 
 def handle_it(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None) -> int:
     return _handle_maven_layer(
-        ws, args, layer="it", root=_ws_root(ws) / ws.it_root,
+        ws, args, layer="it", root_rel=ws.it_root,
         maven_args=["-Pit", "verify"], filter_prop="-Dit.test", dry_run=dry_run, logger=logger,
     )
 
