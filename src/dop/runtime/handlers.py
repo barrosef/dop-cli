@@ -349,11 +349,58 @@ def handle_e2e(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None)
         # P1: agrega os resultados da run no .allure-results da suíte e publica.
         _generate_allure3_reports(
             e2e_root, suites=ordered, produced=produced, fresh=fresh, dry_run=dry_run,
+            logger=logger,
         )
     finally:
         if headed and not dry_run:
             _x11_revoke(logger=logger)
     return 0 if all_green else 1
+
+
+def _publish_allure_project(
+    *,
+    project: str,
+    results_dir: Path,
+    reports_root: Path,
+    src: Path | None = None,
+    config_file: Path | None = None,
+    report_name: str | None = None,
+    fresh: bool = False,
+    dry_run: bool = False,
+    logger=None,
+) -> None:
+    """Aggregate *src* into *results_dir* and (re)generate an Allure report
+    for *project* under *reports_root* (the shared :5252 UI root)."""
+    import shutil
+    report_dir = reports_root / project
+    report_name = report_name or project
+
+    if dry_run:
+        if src is not None:
+            print(f"  [dry-run] {project}: agregaria resultados de {src} em {results_dir}")
+        print(f"  [dry-run] Would regenerate Allure report for {project}")
+        return
+
+    if src is not None:
+        copied = _merge_allure_results(src, results_dir, fresh=fresh)
+        if copied:
+            mode = "fresh" if fresh else "merge"
+            print(f"  {project}: {copied} resultado(s) agregados ({mode})")
+
+    if not results_dir.is_dir() or not any(results_dir.iterdir()):
+        print(f"  ⚠ {project}: sem resultados em {results_dir}; pulando geração")
+        return
+    try:
+        if report_dir.is_dir():
+            shutil.rmtree(report_dir)
+        cmd = ["allure", "generate", str(results_dir),
+               "--output", str(report_dir), "--report-name", report_name]
+        if config_file is not None and config_file.is_file():
+            cmd += ["--config", str(config_file)]
+        run_command(cmd, cwd=results_dir.parent, dry_run=dry_run, logger=logger)
+        print(f"  Allure: http://localhost:5252/{project}/index.html")
+    except Exception as e:
+        print(f"  ⚠ Allure generate failed for {project}: {e}")
 
 
 def _generate_allure3_reports(
@@ -363,43 +410,23 @@ def _generate_allure3_reports(
     produced: dict | None = None,
     fresh: bool = False,
     dry_run: bool = False,
+    logger=None,
 ) -> None:
-    import shutil
     produced = produced or {}
     reports_root = e2e_root / "reports"
     for suite in suites:
         suite_dir = e2e_root / suite
-        results_dir = suite_dir / ".allure-results"
-        report_dir = reports_root / suite
-        config_file = suite_dir / "allurerc.yml"
-        src = produced.get(suite)
-
-        if dry_run:
-            if src is not None:
-                print(f"  [dry-run] {suite}: agregaria resultados de {src} em .allure-results")
-            print(f"  [dry-run] Would regenerate Allure report for {suite}")
-            continue
-
-        # P1: copia os resultados da run recém-executada para o agregado da suíte.
-        if src is not None:
-            copied = _merge_allure_results(src, results_dir, fresh=fresh)
-            if copied:
-                mode = "fresh" if fresh else "merge"
-                print(f"  {suite}: {copied} resultado(s) agregados em .allure-results ({mode})")
-
-        if not results_dir.is_dir() or not any(results_dir.iterdir()):
-            print(f"  ⚠ {suite}: sem resultados em .allure-results; pulando geração")
-            continue
-        try:
-            if report_dir.is_dir():
-                shutil.rmtree(report_dir)
-            cmd = ["allure", "generate", ".allure-results", "--output", str(report_dir), "--report-name", suite]
-            if config_file.is_file():
-                cmd += ["--config", "allurerc.yml"]
-            run_command(cmd, cwd=suite_dir)
-            print(f"  Allure: http://localhost:5252/{suite}/index.html")
-        except Exception as e:
-            print(f"  ⚠ Allure generate failed for {suite}: {e}")
+        _publish_allure_project(
+            project=f"e2e-{suite}",
+            results_dir=suite_dir / ".allure-results",
+            reports_root=reports_root,
+            src=produced.get(suite),
+            config_file=suite_dir / "allurerc.yml",
+            report_name=f"e2e-{suite}",
+            fresh=fresh,
+            dry_run=dry_run,
+            logger=logger,
+        )
 
 
 def handle_codegen(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None) -> int:

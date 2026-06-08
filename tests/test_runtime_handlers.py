@@ -61,3 +61,43 @@ def test_suite_urls_from_config():
     ws = _ws()
     assert handlers._suite_base_url(ws, "optum-support-fe") == "http://localhost:5173"
     assert handlers._suite_api_url(ws, "optum-support-fe") == "http://localhost:8080"
+
+
+def test_publish_allure_project_generates(tmp_path):
+    results = tmp_path / "proj" / ".allure-results"
+    results.mkdir(parents=True)
+    (results / "x-result.json").write_text("{}")
+    reports_root = tmp_path / "reports"
+    reports_root.mkdir()
+    with patch("dop.runtime.handlers.run_command") as rc:
+        handlers._publish_allure_project(
+            project="aaa-demo", results_dir=results, reports_root=reports_root,
+        )
+    rc.assert_called_once()
+    cmd = rc.call_args.args[0]
+    assert cmd[:2] == ["allure", "generate"]
+    assert str(reports_root / "aaa-demo") in cmd
+    assert "--report-name" in cmd
+
+
+def test_publish_allure_project_dry_run_skips(tmp_path):
+    results = tmp_path / "p" / ".allure-results"
+    results.mkdir(parents=True)
+    (results / "r.json").write_text("{}")
+    with patch("dop.runtime.handlers.run_command") as rc:
+        handlers._publish_allure_project(
+            project="it-demo", results_dir=results, reports_root=tmp_path / "rep",
+            dry_run=True,
+        )
+    rc.assert_not_called()
+
+
+def test_publish_allure_project_skips_when_no_results(tmp_path):
+    # results_dir does not exist -> generate is skipped, run_command never called
+    with patch("dop.runtime.handlers.run_command") as rc:
+        handlers._publish_allure_project(
+            project="aaa-empty",
+            results_dir=tmp_path / "missing" / ".allure-results",
+            reports_root=tmp_path / "reports",
+        )
+    rc.assert_not_called()
