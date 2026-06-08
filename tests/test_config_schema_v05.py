@@ -50,3 +50,18 @@ def test_ephemeral_runner_config():
 def test_workspace_config_has_runtime():
     ws = WorkspaceConfig(name="test", root="/tmp/test")
     assert isinstance(ws.runtime, RuntimeConfig)
+
+
+def test_workspace_test_roots_defaults():
+    ws = WorkspaceConfig(name="test", root="/tmp/test")
+    assert ws.test_root == "e2e"
+    assert ws.aaa_root == "test/aaa"
+    assert ws.it_root == "test/it"
+
+
+def test_workspace_test_roots_override():
+    ws = WorkspaceConfig(name="ws", root="/tmp/ws",
+                         test_root="custom/e2e", aaa_root="custom/aaa", it_root="custom/it")
+    assert ws.test_root == "custom/e2e"
+    assert ws.aaa_root == "custom/aaa"
+    assert ws.it_root == "custom/it"

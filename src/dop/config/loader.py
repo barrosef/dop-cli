@@ -125,6 +125,9 @@ def _parse_workspace(name: str, data: dict) -> WorkspaceConfig:
     return WorkspaceConfig(
         name=name,
         root=data["root"],
+        test_root=data.get("test_root", "e2e"),
+        aaa_root=data.get("aaa_root", "test/aaa"),
+        it_root=data.get("it_root", "test/it"),
         demands_dir=data.get("demands_dir", "docs/RFC"),
         platform=data.get("platform", "azure_devops"),
         auth_method=data.get("auth_method", "token"),

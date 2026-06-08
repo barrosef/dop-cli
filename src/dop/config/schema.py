@@ -86,6 +86,9 @@ class RuntimeConfig:
 class WorkspaceConfig:
     name: str
     root: str
+    test_root: str = "e2e"
+    aaa_root: str = "test/aaa"
+    it_root: str = "test/it"
     demands_dir: str = "docs/RFC"
     platform: str = "azure_devops"
     auth_method: str = "token"
