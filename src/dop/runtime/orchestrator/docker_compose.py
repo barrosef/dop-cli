@@ -131,6 +131,26 @@ class DockerComposeProvider(RuntimeProvider):
         except ProcessError:
             return 1
 
+    def run_service(self, service, args, *, profile=None, workdir=None, env=None,
+                    dry_run=False, logger=None) -> int:
+        from ...core.security import guard_text
+        cmd = build_run_command(
+            compose_file=self._compose_file(),
+            env_files=self._env_files(),
+            service=service, args=args, profile=profile,
+            extra_env=env, workdir=workdir,
+        )
+        display = " ".join(cmd)
+        guard_text(display)
+        if dry_run:
+            if logger:
+                logger.info(f"WOULD RUN: {display}")
+            return 0
+        if logger:
+            logger.info(f"RUN: {display}")
+        result = subprocess.run(cmd, cwd=str(self._root()))
+        return result.returncode
+
     def clean(self, categories, *, dry_run=False, logger=None) -> list[str]:
         clean_map = self.cfg.clean
         cats = list(clean_map.keys()) if "all" in categories else categories

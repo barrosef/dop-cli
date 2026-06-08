@@ -44,4 +44,9 @@ class RuntimeProvider(ABC):
                       exec_replace: bool = False) -> int: ...
 
     @abstractmethod
+    def run_service(self, service: str, args: list[str], *, profile: str | None = None,
+                    workdir: str | None = None, env: dict[str, str] | None = None,
+                    dry_run: bool = False, logger=None) -> int: ...
+
+    @abstractmethod
     def clean(self, categories: list[str], *, dry_run: bool = False, logger=None) -> list[str]: ...
