@@ -101,3 +101,18 @@ def test_publish_allure_project_skips_when_no_results(tmp_path):
             reports_root=tmp_path / "reports",
         )
     rc.assert_not_called()
+
+
+def test_handle_report_clean_uses_test_root(tmp_path):
+    ws = _ws()
+    ws.root = str(tmp_path)
+    ws.test_root = "test/e2e"
+    runs = tmp_path / "test/e2e/reports/SUOPT-1/optum-support-fe"
+    for n in range(1, 8):
+        (runs / f"run-{n}").mkdir(parents=True)
+    with patch("dop.runtime.handlers.build_runtime_provider", return_value=MagicMock()):
+        rc = handlers.handle_report(ws, _args(report_action="clean", keep=5), dry_run=False)
+    assert rc == 0
+    # 7 runs, keep last 5 -> 2 oldest removed -> 5 remain (only works if clean
+    # resolved the path under test/e2e/reports, i.e. honored ws.test_root)
+    assert sum(1 for _ in runs.iterdir()) == 5

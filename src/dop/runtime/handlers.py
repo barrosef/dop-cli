@@ -253,7 +253,9 @@ def handle_e2e(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None)
     from .e2e import resolve_e2e_target, find_suites_for_jira, next_run_number, suite_order
 
     provider = build_runtime_provider(ws)
-    e2e_root = _ws_root(ws) / "e2e"
+    e2e_root = _ws_root(ws) / ws.test_root
+    # NB: host root follows ws.test_root, but the compose mount maps
+    # ./<test_root>:/e2e, so container-side paths below stay literal "/e2e/...".
     reports_root = e2e_root / "reports"
     order = suite_order(ws)
     known_suites = [
@@ -471,7 +473,7 @@ def handle_report(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=No
     if action == "clean":
         import shutil
         keep = getattr(args, "keep", 5)
-        reports_root = _ws_root(ws) / "e2e" / "reports"
+        reports_root = _ws_root(ws) / ws.test_root / "reports"
         cleaned = 0
         if reports_root.is_dir():
             for jira_dir in reports_root.iterdir():
