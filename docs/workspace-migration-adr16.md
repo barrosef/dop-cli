@@ -1,48 +1,71 @@
-# ADR-16 — Mudanças no workspace Optum (aplicar fora do dop-cli)
+# ADR-16 — Workspace Optum: setup das camadas de teste (aaa/it/e2e)
 
-Estas mudanças vivem no workspace `/opt/wks/csptech/optum`, **não** no `dop-cli`.
-O `dop` (a partir desta versão) já lê `test_root`/`aaa_root`/`it_root` do config e
-expõe `dop aaa`/`dop it`. Falta apenas habilitar o lado do workspace.
+Estas mudanças vivem no workspace `/opt/wks/csptech/optum` (não é git). O `dop` v0.7 já
+expõe `dop e2e`/`dop aaa`/`dop it` e lê `test_root`/`aaa_root`/`it_root` + `java_runner`.
 
-> Resumo das decisões (ver `docs/superpowers/specs/2026-06-08-dop-aaa-it-test-root-design.md`):
-> Maven roda **no host** (aaa e it); reports unificados em `<test_root>/reports`
-> (Optum: `test/e2e/reports`); projects Allure: `e2e-<suite>`, `aaa-<repo>`, `it-<repo>`.
+> **Estado em 2026-06-08:** itens 1–4 e 5 (imagem/serviço/config) e os pilotos **já foram
+> aplicados** neste workspace e validados ponta-a-ponta. Este doc serve de referência/replay.
+
+> **Modelo de execução (v0.7): `dop aaa`/`dop it` rodam Maven EM CONTAINER**, não no host
+> (o host tem JDK21 e não tem `mvn`). Reports unificados em `<test_root>/reports`
+> (`test/e2e/reports`); projects Allure `e2e-<suite>`, `aaa-<repo>`, `it-<repo>` no `:5252`.
 
 ## 1. Migrar `e2e/` → `test/e2e/`
-
 ```bash
-cd /opt/wks/csptech/optum
-mkdir -p test
-mv e2e test/e2e
+cd /opt/wks/csptech/optum && mkdir -p test && mv e2e test/e2e
+```
+(Preserva `reports/` e histórico Allure; specs usam paths relativos.)
+
+## 2. `docker-compose.yml` — mounts do e2e (caminho interno do container fica `/e2e`)
+- `playwright-env`: `./e2e:/e2e` → `./test/e2e:/e2e`
+- `allure`: `./e2e/reports:/app/projects` → `./test/e2e/reports:/app/projects`
+- `allure-ui`: `./e2e/reports:/usr/share/nginx/html:ro` → `./test/e2e/reports:/usr/share/nginx/html:ro`
+
+Recriar os containers que mudaram de mount:
+```bash
+docker compose -f docker-compose.yml --project-directory . up -d --force-recreate --no-deps allure allure-ui
 ```
 
-(Nada é git; preserva `reports/` e o histórico Allure. Código de teste não muda —
-conftest/specs usam paths relativos.)
+## 3. Runner Java em container (imagem + serviço + config)
 
-## 2. `docker-compose.yml` — ajustar mounts (manter caminho interno `/e2e`)
+### 3a. Imagem `docker/java-test/Dockerfile`
+```dockerfile
+FROM eclipse-temurin:17-jdk-jammy
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        maven netcat-openbsd ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /workspace
+ENV MAVEN_OPTS="-Dmaven.repo.local=/root/.m2/repository"
+```
+(Maven 3.6.3 + Java 17.)
 
-O caminho **dentro** do container continua `/e2e` — só o lado host muda:
+### 3b. Serviço `java-test` no `docker-compose.yml`
+```yaml
+  java-test:
+    build: { context: ./docker/java-test, dockerfile: Dockerfile }
+    profiles: ["test"]
+    network_mode: host                      # Testcontainers alcança os containers via localhost
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:rw                      # raiz do workspace (test/ + repos/ no mesmo layout)
+      - m2-cache:/root/.m2/repository        # reusa cache Maven dos apps
+      - /var/run/docker.sock:/var/run/docker.sock   # Testcontainers (sibling containers)
+    env_file: [docker/.env]
+    environment:
+      MAVEN_OPTS: "-Dmaven.repo.local=/root/.m2/repository"
+```
+Build: `docker compose --profile test build java-test`
 
-- `playwright-env`:  `./e2e:/e2e`                          → `./test/e2e:/e2e`
-- `allure`:          `./e2e/reports:/app/projects`         → `./test/e2e/reports:/app/projects`
-- `allure-ui`:       `./e2e/reports:/usr/share/nginx/html:ro` → `./test/e2e/reports:/usr/share/nginx/html:ro`
-
-(Os literais `/e2e/...` dentro dos comandos do `dop` permanecem válidos por causa
-deste mount — não há nada a mudar no `dop` para isso.)
-
-## 3. `~/.config/dop/config.toml` — `[workspaces.optum]`
-
+### 3c. `~/.config/dop/config.toml` — `[workspaces.optum]`
 ```toml
-test_root = "test/e2e"
-# aaa_root / it_root usam os defaults "test/aaa" / "test/it" — só sobrescreva se mudar o layout.
+test_root = "test/e2e"      # aaa_root/it_root usam defaults test/aaa, test/it
+
+[workspaces.optum.runtime.docker_compose.java_runner]
+service = "java-test"
+profile = "test"
 ```
 
 ## 4. Renomear reports e2e existentes → `e2e-<suite>`
-
-O `dop e2e` agora gera `reports/e2e-<suite>` (antes `reports/<suite>`). Para
-preservar os reports **já gerados**, renomeie os diretórios de report (NÃO os de
-staging `<jira>/<suite>/run-N`, que continuam por suíte):
-
 ```bash
 cd /opt/wks/csptech/optum/test/e2e/reports
 for d in optum-support-fe providers-front-end; do
@@ -50,39 +73,38 @@ for d in optum-support-fe providers-front-end; do
 done
 ```
 
-(Atualizar também o `index.html`/links do `:5252` para o naming
-`e2e-<suite>` / `aaa-<repo>` / `it-<repo>`.)
+## 5. Poms piloto (smoke) e ACHADOS do ADR-16
 
-## 5. Scaffolding dos poms piloto (ADR-16)
+Os pilotos provam o caminho do runner. **Dois achados importantes surgiram na validação —
+o esquema "parent = pom do app" do ADR-16 precisa de revisão** (eram riscos já previstos no
+ADR §Custos/riscos):
 
-Fora do escopo do `dop-cli` — são projetos Maven no workspace:
+- **🔴 Parent-pom via relativePath NÃO funciona:** `repos/<repo>/pom.xml` tem packaging
+  `jar` (Spring Boot app, não multi-módulo). Maven exige `<packaging>pom</packaging>` num
+  parent → erro `must be "pom" but is "jar"`. **Os pilotos usam `spring-boot-starter-parent:2.5.7`
+  como parent** (sem `build-helper` add-source do app). Consequência: o smoke **não compila
+  as fontes do app**. Para o conteúdo real de **SUOPT-3184/3188**, definir outra estratégia
+  de "compilar contra o app" (ex.: depender do jar do app, ou um módulo agregador `pom`).
+- **🟡 Versões:** Spring Boot 2.5.7 traz JUnit Platform 1.7.2 — incompatível com `allure-junit5`
+  novo e com Testcontainers atuais. Pilotos fixam `<junit-jupiter.version>5.8.2</junit-jupiter.version>`
+  e `allure-junit5:2.20.1`.
+- **🟡 Testcontainers + MySQL:** é preciso `mysql:mysql-connector-java` no classpath de teste
+  (o probe de readiness do `MySQLContainer` usa o driver JDBC).
 
-- `test/aaa/lifesupport-api/pom.xml` (**SUOPT-3184**): parent = pom do app via
-  `relativePath ../../../repos/lifesupport-api/pom.xml`; `build-helper-maven-plugin`
-  adiciona `../../../repos/lifesupport-api/src/main/java` como source; surefire +
-  `allure-junit5` + `aspectjweaver`; testes em `src/test/java`. Resultados em
-  `target/allure-results` (o `dop aaa` agrega e publica como `aaa-lifesupport-api`).
-- `test/it/optum-support-be/pom.xml` (**SUOPT-3188**): mesmo esquema parent+build-helper
-  + `maven-failsafe-plugin` (perfil `it`, rodado por `mvn -Pit verify`), Testcontainers
-  (MySQL/Mongo efêmeros por run), schema via Flyway no startup, datasource via
-  `@DynamicPropertySource`. Publicado como `it-optum-support-be`.
+Pilotos atuais (smoke, em `/opt/wks/csptech/optum`):
+- `test/aaa/lifesupport-api/` — JUnit5/AssertJ trivial; publica `aaa-lifesupport-api`.
+- `test/it/optum-support-be/` — `MySQLContainer` via Testcontainers (perfil `it`, failsafe);
+  publica `it-optum-support-be`. **Confirma que docker.sock + network_mode host funcionam.**
 
-**Pré-requisitos do host** (decisão "Maven no host"): JDK 17 + Maven (ou `mvnw` no
-projeto) disponíveis; Docker disponível para o Testcontainers do `dop it`.
+## 6. Docs / memória do workspace
+- `CLAUDE.md` / `agent-rules.md`: `dop aaa`/`dop it` na tabela de ferramentas; paths `test/`;
+  gate das três camadas (verde local pré-PR). Refs `e2e/...` → `test/e2e/...`.
 
-## 6. Docs / memória
-
-- `CLAUDE.md` / `agent-rules.md`: adicionar `dop aaa`/`dop it` na tabela de
-  ferramentas; paths `test/`; gate das três camadas (verde local pré-PR).
-- Atualizar refs `e2e/...` → `test/e2e/...`.
-
-## Validação ponta-a-ponta (após aplicar 1–5)
-
+## Validação ponta-a-ponta (confirmada 2026-06-08)
 ```bash
-dop aaa lifesupport-api          # roda mvn test, publica aaa-lifesupport-api
-dop it  optum-support-be         # roda mvn -Pit verify (Testcontainers), publica it-optum-support-be
-dop aaa all                      # itera todos os projetos em test/aaa/
-dop e2e <suite>                  # continua funcional, agora a partir de test/e2e/
+dop --workspace optum aaa lifesupport-api   # mvn test em container → aaa-lifesupport-api (green, :5252 200)
+dop --workspace optum it  optum-support-be  # mvn -Pit verify + Testcontainers → it-optum-support-be (green, :5252 200)
+dop --workspace optum e2e <suite>           # inalterado, a partir de test/e2e/
 ```
-
-Confira os três tipos de project em `http://localhost:5252/`.
+Pré-requisito de host: **apenas Docker** (a toolchain Java/Maven roda no container `java-test`;
+Testcontainers usa docker.sock + network_mode host).
