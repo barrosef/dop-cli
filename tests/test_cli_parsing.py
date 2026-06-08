@@ -97,6 +97,17 @@ class TestCLIParsing(unittest.TestCase):
         self.assertIsNone(args.k)
         self.assertFalse(args.fresh_report)
 
+    def test_version_flag(self):
+        import contextlib
+        import io
+        from dop import __version__
+        for flag in ("--version", "-v"):
+            buf = io.StringIO()
+            with self.assertRaises(SystemExit) as cm, contextlib.redirect_stdout(buf):
+                cli.build_parser().parse_args([flag])
+            self.assertEqual(cm.exception.code, 0)
+            self.assertIn(__version__, buf.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

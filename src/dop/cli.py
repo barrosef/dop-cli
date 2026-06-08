@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
+from . import __version__
 from .config import get_workspace
 from .core.errors import MCPError, SecurityViolationError, ValidationError
 from .core.fs import write_text
@@ -611,6 +612,8 @@ class SecureArgumentParser(argparse.ArgumentParser):
 
 def build_parser() -> argparse.ArgumentParser:
     parser = SecureArgumentParser(prog="dop")
+    parser.add_argument("--version", "-v", action="version", version=f"dop {__version__}",
+                        help="Mostra a versão do dop e sai")
     parser.add_argument("--dry-run", action="store_true", help="Loga sem executar git/az")
     parser.add_argument("--workspace", default=None, help="Nome do workspace (auto-detect via CWD)")
     sub = parser.add_subparsers(dest="command", required=True)
