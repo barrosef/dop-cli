@@ -551,7 +551,7 @@ def _handle_maven_layer(
             results_dir=project_dir / ".allure-results",
             reports_root=reports_root,
             src=project_dir / "target" / "allure-results",
-            fresh=fresh, dry_run=dry_run,
+            fresh=fresh, dry_run=dry_run, logger=logger,
         )
 
     print(f"\nResult: {'green' if all_green else 'red'}")
