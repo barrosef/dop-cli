@@ -77,8 +77,11 @@ def test_publish_allure_project_generates(tmp_path):
     rc.assert_called_once()
     cmd = rc.call_args.args[0]
     assert cmd[:2] == ["allure", "generate"]
-    assert str(reports_root / "aaa-demo") in cmd
+    # gera num tmp e troca atomicamente: --output aponta pro tmp, resultado final no dir servido
+    assert str(reports_root / ".aaa-demo.tmp-gen") in cmd
     assert "--report-name" in cmd
+    assert (reports_root / "aaa-demo").is_dir()
+    assert not (reports_root / ".aaa-demo.tmp-gen").exists()
 
 
 def test_publish_allure_project_dry_run_skips(tmp_path):

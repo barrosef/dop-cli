@@ -232,6 +232,8 @@ def _merge_allure_results(src_results: Path, dest_results: Path, *, fresh: bool 
     """
     import shutil
 
+    if src_results.resolve() == dest_results.resolve():
+        return 0
     if fresh and dest_results.is_dir():
         for f in dest_results.iterdir():
             if f.is_file():
@@ -453,12 +455,38 @@ def handle_it(ws: WorkspaceConfig, args, *, dry_run: bool = False, logger=None) 
     )
 
 
+def _suite_run_results(reports_root: Path, suite: str) -> list[Path]:
+    """Todos os diretórios ``reports/<jira>/<suite>/run-N/results`` existentes da suíte.
+
+    Os ``run-N`` são a fonte de verdade dos resultados e2e; o agregado
+    ``<suite>/.allure-results`` é estado derivado e reconstruível a partir deles.
+    Ordenado por (jira, N) para determinismo.
+    """
+    if not reports_root.is_dir():
+        return []
+    found: list[tuple[str, int, Path]] = []
+    for jira_dir in reports_root.iterdir():
+        if not jira_dir.is_dir() or jira_dir.name.startswith("."):
+            continue
+        suite_dir = jira_dir / suite
+        if not suite_dir.is_dir():
+            continue
+        for run_dir in suite_dir.iterdir():
+            parts = run_dir.name.split("-")
+            if (run_dir.is_dir() and len(parts) == 2
+                    and parts[0] == "run" and parts[1].isdigit()):
+                results = run_dir / "results"
+                if results.is_dir():
+                    found.append((jira_dir.name, int(parts[1]), results))
+    return [p for _, _, p in sorted(found, key=lambda t: (t[0], t[1]))]
+
+
 def _publish_allure_project(
     *,
     project: str,
     results_dir: Path,
     reports_root: Path,
-    src: Path | None = None,
+    src: "Path | list[Path] | None" = None,
     config_file: Path | None = None,
     report_name: str | None = None,
     fresh: bool = False,
@@ -470,33 +498,43 @@ def _publish_allure_project(
     import shutil
     report_dir = reports_root / project
     report_name = report_name or project
+    sources: list[Path] = [] if src is None else ([src] if isinstance(src, Path) else list(src))
 
     if dry_run:
-        if src is not None:
-            print(f"  [dry-run] {project}: agregaria resultados de {src} em {results_dir}")
+        for s in sources:
+            print(f"  [dry-run] {project}: agregaria resultados de {s} em {results_dir}")
         print(f"  [dry-run] Would regenerate Allure report for {project}")
         return
 
-    if src is not None:
-        copied = _merge_allure_results(src, results_dir, fresh=fresh)
-        if copied:
-            mode = "fresh" if fresh else "merge"
-            print(f"  {project}: {copied} resultado(s) agregados ({mode})")
+    copied = 0
+    for i, s in enumerate(sources):
+        copied += _merge_allure_results(s, results_dir, fresh=fresh and i == 0)
+    if copied:
+        mode = "fresh" if fresh else "merge"
+        print(f"  {project}: {copied} resultado(s) agregados ({mode}, {len(sources)} run(s))")
 
     if not results_dir.is_dir() or not any(results_dir.iterdir()):
         print(f"  ⚠ {project}: sem resultados em {results_dir}; pulando geração")
         return
+    # Gera num dir temporário e só troca o report servido depois do sucesso —
+    # uma falha no `allure generate` não pode derrubar o report que já está no ar.
+    tmp_dir = reports_root / f".{project}.tmp-gen"
     try:
-        if report_dir.is_dir():
-            shutil.rmtree(report_dir)
+        if tmp_dir.is_dir():
+            shutil.rmtree(tmp_dir)
+        tmp_dir.mkdir(parents=True)
         cmd = ["allure", "generate", str(results_dir),
-               "--output", str(report_dir), "--report-name", report_name]
+               "--output", str(tmp_dir), "--report-name", report_name]
         if config_file is not None and config_file.is_file():
             cmd += ["--config", str(config_file)]
         run_command(cmd, cwd=results_dir.parent, dry_run=dry_run, logger=logger)
+        if report_dir.is_dir():
+            shutil.rmtree(report_dir)
+        tmp_dir.rename(report_dir)
         print(f"  Allure: http://localhost:5252/{project}/index.html")
     except Exception as e:
         print(f"  ⚠ Allure generate failed for {project}: {e}")
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def _generate_allure3_reports(
@@ -512,11 +550,17 @@ def _generate_allure3_reports(
     reports_root = e2e_root / "reports"
     for suite in suites:
         suite_dir = e2e_root / suite
+        # Agrega TODAS as runs (não só a atual): o acumulador vira estado derivado
+        # e um wipe acidental dele é reparado na publicação seguinte.
+        sources = _suite_run_results(reports_root, suite)
+        cur = produced.get(suite)
+        if cur is not None and cur not in sources:
+            sources.append(cur)
         _publish_allure_project(
             project=f"e2e-{suite}",
             results_dir=suite_dir / ".allure-results",
             reports_root=reports_root,
-            src=produced.get(suite),
+            src=sources,
             config_file=suite_dir / "allurerc.yml",
             report_name=f"e2e-{suite}",
             fresh=fresh,

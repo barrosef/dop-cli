@@ -756,7 +756,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--fresh-report",
         action="store_true",
         dest="fresh_report",
-        help="Zera o .allure-results da suíte antes de agregar (contadores só desta run)",
+        help="Reconstrói o .allure-results da suíte do zero a partir de TODAS as "
+             "runs em reports/ (descarta apenas resíduos sem run-N de origem)",
     )
     p_e2e.set_defaults(func=_make_rt_func(_rt_e2e), command="e2e")
 
