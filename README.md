@@ -5,7 +5,7 @@ DevOps Pipeline CLI - IA-First development workflow, multi-workspace, multi-plat
 ## Install
 
 ```bash
-pip install git+ssh://git@github.com/Digital-Business-One/dop.git
+pip install git+ssh://git@github.com/barrosef/dop.git
 ```
 
 ## Configuration
