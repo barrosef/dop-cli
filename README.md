@@ -2,6 +2,8 @@
 
 DevOps Pipeline CLI - IA-First development workflow, multi-workspace, multi-platform.
 
+Part of the [DOP platform](https://dop-t.com) — what it is, how it is built and where it stands: **[dop-t.com](https://dop-t.com)**.
+
 ## Install
 
 ```bash
